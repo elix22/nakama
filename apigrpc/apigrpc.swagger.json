@@ -23,12 +23,18 @@
     "/healthcheck": {
       "get": {
         "summary": "A healthcheck which load balancers can use to check the service.",
-        "operationId": "Healthcheck",
+        "operationId": "Nakama_Healthcheck",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -40,12 +46,18 @@
     "/v2/account": {
       "get": {
         "summary": "Fetch the current user's account.",
-        "operationId": "GetAccount",
+        "operationId": "Nakama_GetAccount",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiAccount"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -55,12 +67,18 @@
       },
       "put": {
         "summary": "Update fields in the current user's account.",
-        "operationId": "UpdateAccount",
+        "operationId": "Nakama_UpdateAccount",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -79,15 +97,74 @@
         ]
       }
     },
-    "/v2/account/authenticate/custom": {
+    "/v2/account/authenticate/apple": {
       "post": {
-        "summary": "Authenticate a user with a custom id against the server.",
-        "operationId": "AuthenticateCustom",
+        "summary": "Authenticate a user with an Apple ID against the server.",
+        "operationId": "Nakama_AuthenticateApple",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "The Apple account details.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiAccountApple"
+            }
+          },
+          {
+            "name": "create",
+            "description": "Register the account if the user does not already exist.",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "username",
+            "description": "Set the username on the account at register. Must be unique.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/account/authenticate/custom": {
+      "post": {
+        "summary": "Authenticate a user with a custom id against the server.",
+        "operationId": "Nakama_AuthenticateCustom",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -106,8 +183,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -130,12 +206,18 @@
     "/v2/account/authenticate/device": {
       "post": {
         "summary": "Authenticate a user with a device id against the server.",
-        "operationId": "AuthenticateDevice",
+        "operationId": "Nakama_AuthenticateDevice",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -154,8 +236,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -178,12 +259,18 @@
     "/v2/account/authenticate/email": {
       "post": {
         "summary": "Authenticate a user with an email+password against the server.",
-        "operationId": "AuthenticateEmail",
+        "operationId": "Nakama_AuthenticateEmail",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -202,8 +289,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -226,12 +312,18 @@
     "/v2/account/authenticate/facebook": {
       "post": {
         "summary": "Authenticate a user with a Facebook OAuth token against the server.",
-        "operationId": "AuthenticateFacebook",
+        "operationId": "Nakama_AuthenticateFacebook",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -250,8 +342,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -265,8 +356,7 @@
             "description": "Import Facebook friends for the user.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -282,12 +372,18 @@
     "/v2/account/authenticate/facebookinstantgame": {
       "post": {
         "summary": "Authenticate a user with a Facebook Instant Game token against the server.",
-        "operationId": "AuthenticateFacebookInstantGame",
+        "operationId": "Nakama_AuthenticateFacebookInstantGame",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -306,8 +402,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -330,12 +425,18 @@
     "/v2/account/authenticate/gamecenter": {
       "post": {
         "summary": "Authenticate a user with Apple's GameCenter against the server.",
-        "operationId": "AuthenticateGameCenter",
+        "operationId": "Nakama_AuthenticateGameCenter",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -354,8 +455,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -378,12 +478,18 @@
     "/v2/account/authenticate/google": {
       "post": {
         "summary": "Authenticate a user with Google against the server.",
-        "operationId": "AuthenticateGoogle",
+        "operationId": "Nakama_AuthenticateGoogle",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -402,8 +508,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -426,12 +531,18 @@
     "/v2/account/authenticate/steam": {
       "post": {
         "summary": "Authenticate a user with Steam against the server.",
-        "operationId": "AuthenticateSteam",
+        "operationId": "Nakama_AuthenticateSteam",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -450,8 +561,7 @@
             "description": "Register the account if the user does not already exist.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "username",
@@ -459,6 +569,13 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "sync",
+            "description": "Import Steam friends for the user.",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -471,15 +588,54 @@
         ]
       }
     },
-    "/v2/account/link/custom": {
+    "/v2/account/link/apple": {
       "post": {
-        "summary": "Add a custom ID to the social profiles on the current user's account.",
-        "operationId": "LinkCustom",
+        "summary": "Add an Apple ID to the social profiles on the current user's account.",
+        "operationId": "Nakama_LinkApple",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiAccountApple"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/account/link/custom": {
+      "post": {
+        "summary": "Add a custom ID to the social profiles on the current user's account.",
+        "operationId": "Nakama_LinkCustom",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -501,12 +657,18 @@
     "/v2/account/link/device": {
       "post": {
         "summary": "Add a device ID to the social profiles on the current user's account.",
-        "operationId": "LinkDevice",
+        "operationId": "Nakama_LinkDevice",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -528,12 +690,18 @@
     "/v2/account/link/email": {
       "post": {
         "summary": "Add an email+password to the social profiles on the current user's account.",
-        "operationId": "LinkEmail",
+        "operationId": "Nakama_LinkEmail",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -555,12 +723,18 @@
     "/v2/account/link/facebook": {
       "post": {
         "summary": "Add Facebook to the social profiles on the current user's account.",
-        "operationId": "LinkFacebook",
+        "operationId": "Nakama_LinkFacebook",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -579,8 +753,7 @@
             "description": "Import Facebook friends for the user.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -591,19 +764,24 @@
     "/v2/account/link/facebookinstantgame": {
       "post": {
         "summary": "Add Facebook Instant Game to the social profiles on the current user's account.",
-        "operationId": "LinkFacebookInstantGame",
+        "operationId": "Nakama_LinkFacebookInstantGame",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
             "name": "body",
-            "description": "The Facebook Instant Game account details.",
             "in": "body",
             "required": true,
             "schema": {
@@ -619,12 +797,18 @@
     "/v2/account/link/gamecenter": {
       "post": {
         "summary": "Add Apple's GameCenter to the social profiles on the current user's account.",
-        "operationId": "LinkGameCenter",
+        "operationId": "Nakama_LinkGameCenter",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -646,12 +830,18 @@
     "/v2/account/link/google": {
       "post": {
         "summary": "Add Google to the social profiles on the current user's account.",
-        "operationId": "LinkGoogle",
+        "operationId": "Nakama_LinkGoogle",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -673,12 +863,18 @@
     "/v2/account/link/steam": {
       "post": {
         "summary": "Add Steam to the social profiles on the current user's account.",
-        "operationId": "LinkSteam",
+        "operationId": "Nakama_LinkSteam",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -688,7 +884,78 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/apiAccountSteam"
+              "$ref": "#/definitions/apiLinkSteamRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/account/session/refresh": {
+      "post": {
+        "summary": "Refresh a user's session using a refresh token retrieved from a previous authentication request.",
+        "operationId": "Nakama_SessionRefresh",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiSession"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiSessionRefreshRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ],
+        "security": [
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/v2/account/unlink/apple": {
+      "post": {
+        "summary": "Remove the Apple ID from the social profiles on the current user's account.",
+        "operationId": "Nakama_UnlinkApple",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiAccountApple"
             }
           }
         ],
@@ -700,12 +967,18 @@
     "/v2/account/unlink/custom": {
       "post": {
         "summary": "Remove the custom ID from the social profiles on the current user's account.",
-        "operationId": "UnlinkCustom",
+        "operationId": "Nakama_UnlinkCustom",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -727,12 +1000,18 @@
     "/v2/account/unlink/device": {
       "post": {
         "summary": "Remove the device ID from the social profiles on the current user's account.",
-        "operationId": "UnlinkDevice",
+        "operationId": "Nakama_UnlinkDevice",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -754,12 +1033,18 @@
     "/v2/account/unlink/email": {
       "post": {
         "summary": "Remove the email+password from the social profiles on the current user's account.",
-        "operationId": "UnlinkEmail",
+        "operationId": "Nakama_UnlinkEmail",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -781,12 +1066,18 @@
     "/v2/account/unlink/facebook": {
       "post": {
         "summary": "Remove Facebook from the social profiles on the current user's account.",
-        "operationId": "UnlinkFacebook",
+        "operationId": "Nakama_UnlinkFacebook",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -808,12 +1099,18 @@
     "/v2/account/unlink/facebookinstantgame": {
       "post": {
         "summary": "Remove Facebook Instant Game profile from the social profiles on the current user's account.",
-        "operationId": "UnlinkFacebookInstantGame",
+        "operationId": "Nakama_UnlinkFacebookInstantGame",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -835,12 +1132,18 @@
     "/v2/account/unlink/gamecenter": {
       "post": {
         "summary": "Remove Apple's GameCenter from the social profiles on the current user's account.",
-        "operationId": "UnlinkGameCenter",
+        "operationId": "Nakama_UnlinkGameCenter",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -862,12 +1165,18 @@
     "/v2/account/unlink/google": {
       "post": {
         "summary": "Remove Google from the social profiles on the current user's account.",
-        "operationId": "UnlinkGoogle",
+        "operationId": "Nakama_UnlinkGoogle",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -889,12 +1198,18 @@
     "/v2/account/unlink/steam": {
       "post": {
         "summary": "Remove Steam from the social profiles on the current user's account.",
-        "operationId": "UnlinkSteam",
+        "operationId": "Nakama_UnlinkSteam",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -913,21 +1228,27 @@
         ]
       }
     },
-    "/v2/channel/{channel_id}": {
+    "/v2/channel/{channelId}": {
       "get": {
         "summary": "List a channel's message history.",
-        "operationId": "ListChannelMessages",
+        "operationId": "Nakama_ListChannelMessages",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiChannelMessageList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "channel_id",
+            "name": "channelId",
             "description": "The channel ID to list from.",
             "in": "path",
             "required": true,
@@ -946,8 +1267,7 @@
             "description": "True if listing should be older messages to newer, false if reverse.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "cursor",
@@ -965,12 +1285,18 @@
     "/v2/event": {
       "post": {
         "summary": "Submit an event for processing in the server's registered runtime custom events handler.",
-        "operationId": "Event",
+        "operationId": "Nakama_Event",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -992,12 +1318,18 @@
     "/v2/friend": {
       "get": {
         "summary": "List all friends for the current user.",
-        "operationId": "ListFriends",
+        "operationId": "Nakama_ListFriends",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiFriendList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1032,12 +1364,18 @@
       },
       "delete": {
         "summary": "Delete one or more users by ID or username.",
-        "operationId": "DeleteFriends",
+        "operationId": "Nakama_DeleteFriends",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1071,12 +1409,18 @@
       },
       "post": {
         "summary": "Add friends by ID or username to a user's account.",
-        "operationId": "AddFriends",
+        "operationId": "Nakama_AddFriends",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1110,12 +1454,18 @@
     "/v2/friend/block": {
       "post": {
         "summary": "Block one or more users by ID or username.",
-        "operationId": "BlockFriends",
+        "operationId": "Nakama_BlockFriends",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1149,12 +1499,18 @@
     "/v2/friend/facebook": {
       "post": {
         "summary": "Import Facebook friends and add them to a user's account.",
-        "operationId": "ImportFacebookFriends",
+        "operationId": "Nakama_ImportFacebookFriends",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1173,8 +1529,48 @@
             "description": "Reset the current user's friends list.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/friend/steam": {
+      "post": {
+        "summary": "Import Steam friends and add them to a user's account.",
+        "operationId": "Nakama_ImportSteamFriends",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "The Facebook account details.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiAccountSteam"
+            }
+          },
+          {
+            "name": "reset",
+            "description": "Reset the current user's friends list.",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -1185,12 +1581,18 @@
     "/v2/group": {
       "get": {
         "summary": "List groups based on given filters.",
-        "operationId": "ListGroups",
+        "operationId": "Nakama_ListGroups",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiGroupList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1224,12 +1626,18 @@
       },
       "post": {
         "summary": "Create a new group with the current user as the owner.",
-        "operationId": "CreateGroup",
+        "operationId": "Nakama_CreateGroup",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiGroup"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1248,21 +1656,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}": {
+    "/v2/group/{groupId}": {
       "delete": {
         "summary": "Delete a group by ID.",
-        "operationId": "DeleteGroup",
+        "operationId": "Nakama_DeleteGroup",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The id of a group.",
             "in": "path",
             "required": true,
@@ -1275,18 +1689,24 @@
       },
       "put": {
         "summary": "Update fields in a given group.",
-        "operationId": "UpdateGroup",
+        "operationId": "Nakama_UpdateGroup",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The ID of the group to update.",
             "in": "path",
             "required": true,
@@ -1306,21 +1726,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/add": {
+    "/v2/group/{groupId}/add": {
       "post": {
         "summary": "Add users to a group.",
-        "operationId": "AddGroupUsers",
+        "operationId": "Nakama_AddGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group to add users to.",
             "in": "path",
             "required": true,
@@ -1342,21 +1768,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/ban": {
+    "/v2/group/{groupId}/ban": {
       "post": {
         "summary": "Ban a set of users from a group.",
-        "operationId": "BanGroupUsers",
+        "operationId": "Nakama_BanGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group to ban users from.",
             "in": "path",
             "required": true,
@@ -1378,21 +1810,69 @@
         ]
       }
     },
-    "/v2/group/{group_id}/join": {
+    "/v2/group/{groupId}/demote": {
       "post": {
-        "summary": "Immediately join an open group, or request to join a closed one.",
-        "operationId": "JoinGroup",
+        "summary": "Demote a set of users in a group to the next role down.",
+        "operationId": "Nakama_DemoteGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
+            "description": "The group ID to demote in.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "user_ids",
+            "description": "The users to demote.",
+            "in": "query",
+            "required": true,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/group/{groupId}/join": {
+      "post": {
+        "summary": "Immediately join an open group, or request to join a closed one.",
+        "operationId": "Nakama_JoinGroup",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "groupId",
             "description": "The group ID to join. The group must already exist.",
             "in": "path",
             "required": true,
@@ -1404,21 +1884,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/kick": {
+    "/v2/group/{groupId}/kick": {
       "post": {
         "summary": "Kick a set of users from a group.",
-        "operationId": "KickGroupUsers",
+        "operationId": "Nakama_KickGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group ID to kick from.",
             "in": "path",
             "required": true,
@@ -1440,21 +1926,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/leave": {
+    "/v2/group/{groupId}/leave": {
       "post": {
         "summary": "Leave a group the user is a member of.",
-        "operationId": "LeaveGroup",
+        "operationId": "Nakama_LeaveGroup",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group ID to leave.",
             "in": "path",
             "required": true,
@@ -1466,21 +1958,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/promote": {
+    "/v2/group/{groupId}/promote": {
       "post": {
         "summary": "Promote a set of users in a group to the next role up.",
-        "operationId": "PromoteGroupUsers",
+        "operationId": "Nakama_PromoteGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group ID to promote in.",
             "in": "path",
             "required": true,
@@ -1502,21 +2000,27 @@
         ]
       }
     },
-    "/v2/group/{group_id}/user": {
+    "/v2/group/{groupId}/user": {
       "get": {
         "summary": "List all users that are part of a group.",
-        "operationId": "ListGroupUsers",
+        "operationId": "Nakama_ListGroupUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiGroupUserList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "group_id",
+            "name": "groupId",
             "description": "The group ID to list from.",
             "in": "path",
             "required": true,
@@ -1551,28 +2055,133 @@
         ]
       }
     },
-    "/v2/leaderboard/{leaderboard_id}": {
+    "/v2/iap/purchase/apple": {
+      "post": {
+        "summary": "Validate Apple IAP Receipt",
+        "operationId": "Nakama_ValidatePurchaseApple",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseAppleRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/iap/purchase/google": {
+      "post": {
+        "summary": "Validate Google IAP Receipt",
+        "operationId": "Nakama_ValidatePurchaseGoogle",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseGoogleRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/iap/purchase/huawei": {
+      "post": {
+        "summary": "Validate Huawei IAP Receipt",
+        "operationId": "Nakama_ValidatePurchaseHuawei",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiValidatePurchaseHuaweiRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
+    "/v2/leaderboard/{leaderboardId}": {
       "get": {
         "summary": "List leaderboard records.",
-        "operationId": "ListLeaderboardRecords",
+        "operationId": "Nakama_ListLeaderboardRecords",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiLeaderboardRecordList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "leaderboard_id",
+            "name": "leaderboardId",
             "description": "The ID of the leaderboard to list for.",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "owner_ids",
+            "name": "ownerIds",
             "description": "One or more owners to retrieve records for.",
             "in": "query",
             "required": false,
@@ -1612,18 +2221,24 @@
       },
       "delete": {
         "summary": "Delete a leaderboard record.",
-        "operationId": "DeleteLeaderboardRecord",
+        "operationId": "Nakama_DeleteLeaderboardRecord",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "leaderboard_id",
+            "name": "leaderboardId",
             "description": "The leaderboard ID to delete from.",
             "in": "path",
             "required": true,
@@ -1636,18 +2251,24 @@
       },
       "post": {
         "summary": "Write a record to a leaderboard.",
-        "operationId": "WriteLeaderboardRecord",
+        "operationId": "Nakama_WriteLeaderboardRecord",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiLeaderboardRecord"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "leaderboard_id",
+            "name": "leaderboardId",
             "description": "The ID of the leaderboard to write to.",
             "in": "path",
             "required": true,
@@ -1668,28 +2289,34 @@
         ]
       }
     },
-    "/v2/leaderboard/{leaderboard_id}/owner/{owner_id}": {
+    "/v2/leaderboard/{leaderboardId}/owner/{ownerId}": {
       "get": {
         "summary": "List leaderboard records that belong to a user.",
-        "operationId": "ListLeaderboardRecordsAroundOwner",
+        "operationId": "Nakama_ListLeaderboardRecordsAroundOwner",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiLeaderboardRecordList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "leaderboard_id",
+            "name": "leaderboardId",
             "description": "The ID of the tournament to list for.",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "owner_id",
+            "name": "ownerId",
             "description": "The owner to retrieve records around.",
             "in": "path",
             "required": true,
@@ -1720,12 +2347,18 @@
     "/v2/match": {
       "get": {
         "summary": "Fetch list of running matches.",
-        "operationId": "ListMatches",
+        "operationId": "Nakama_ListMatches",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiMatchList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1743,8 +2376,7 @@
             "description": "Authoritative or relayed matches.",
             "in": "query",
             "required": false,
-            "type": "boolean",
-            "format": "boolean"
+            "type": "boolean"
           },
           {
             "name": "label",
@@ -1754,7 +2386,7 @@
             "type": "string"
           },
           {
-            "name": "min_size",
+            "name": "minSize",
             "description": "Minimum user count.",
             "in": "query",
             "required": false,
@@ -1762,7 +2394,7 @@
             "format": "int32"
           },
           {
-            "name": "max_size",
+            "name": "maxSize",
             "description": "Maximum user count.",
             "in": "query",
             "required": false,
@@ -1785,12 +2417,18 @@
     "/v2/notification": {
       "get": {
         "summary": "Fetch list of notifications.",
-        "operationId": "ListNotifications",
+        "operationId": "Nakama_ListNotifications",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiNotificationList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1804,7 +2442,7 @@
             "format": "int32"
           },
           {
-            "name": "cacheable_cursor",
+            "name": "cacheableCursor",
             "description": "A cursor to page through notifications. May be cached by clients to get from point in time forwards.",
             "in": "query",
             "required": false,
@@ -1817,12 +2455,18 @@
       },
       "delete": {
         "summary": "Delete one or more notifications for the current user.",
-        "operationId": "DeleteNotifications",
+        "operationId": "Nakama_DeleteNotifications",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1847,12 +2491,18 @@
     "/v2/rpc/{id}": {
       "get": {
         "summary": "Execute a Lua function on the server.",
-        "operationId": "RpcFunc2",
+        "operationId": "Nakama_RpcFunc2",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiRpc"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1872,7 +2522,7 @@
             "type": "string"
           },
           {
-            "name": "http_key",
+            "name": "httpKey",
             "description": "The authentication key used when executed as a non-client HTTP request.",
             "in": "query",
             "required": false,
@@ -1891,12 +2541,18 @@
       },
       "post": {
         "summary": "Execute a Lua function on the server.",
-        "operationId": "RpcFunc",
+        "operationId": "Nakama_RpcFunc",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiRpc"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1916,6 +2572,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "httpKey",
+            "description": "The authentication key used when executed as a non-client HTTP request.",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -1929,15 +2592,54 @@
         ]
       }
     },
+    "/v2/session/logout": {
+      "post": {
+        "summary": "Log out a session, invalidate a refresh token, or log out all sessions/refresh tokens for a user.",
+        "operationId": "Nakama_SessionLogout",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiSessionLogoutRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      }
+    },
     "/v2/storage": {
       "post": {
         "summary": "Get storage objects.",
-        "operationId": "ReadStorageObjects",
+        "operationId": "Nakama_ReadStorageObjects",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiStorageObjects"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1957,12 +2659,18 @@
       },
       "put": {
         "summary": "Write objects into the storage engine.",
-        "operationId": "WriteStorageObjects",
+        "operationId": "Nakama_WriteStorageObjects",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiStorageObjectAcks"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -1984,12 +2692,18 @@
     "/v2/storage/delete": {
       "put": {
         "summary": "Delete one or more objects by ID or username.",
-        "operationId": "DeleteStorageObjects",
+        "operationId": "Nakama_DeleteStorageObjects",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -2011,12 +2725,18 @@
     "/v2/storage/{collection}": {
       "get": {
         "summary": "List publicly readable storage objects in a given collection.",
-        "operationId": "ListStorageObjects",
+        "operationId": "Nakama_ListStorageObjects",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiStorageObjectList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -2029,7 +2749,7 @@
             "type": "string"
           },
           {
-            "name": "user_id",
+            "name": "userId",
             "description": "ID of the user.",
             "in": "query",
             "required": false,
@@ -2056,15 +2776,21 @@
         ]
       }
     },
-    "/v2/storage/{collection}/{user_id}": {
+    "/v2/storage/{collection}/{userId}": {
       "get": {
         "summary": "List publicly readable storage objects in a given collection.",
-        "operationId": "ListStorageObjects2",
+        "operationId": "Nakama_ListStorageObjects2",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiStorageObjectList"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -2077,7 +2803,7 @@
             "type": "string"
           },
           {
-            "name": "user_id",
+            "name": "userId",
             "description": "ID of the user.",
             "in": "path",
             "required": true,
@@ -2107,18 +2833,24 @@
     "/v2/tournament": {
       "get": {
         "summary": "List current or upcoming tournaments.",
-        "operationId": "ListTournaments",
+        "operationId": "Nakama_ListTournaments",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiTournamentList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "category_start",
+            "name": "categoryStart",
             "description": "The start of the categories to include. Defaults to 0.",
             "in": "query",
             "required": false,
@@ -2126,7 +2858,7 @@
             "format": "int64"
           },
           {
-            "name": "category_end",
+            "name": "categoryEnd",
             "description": "The end of the categories to include. Defaults to 128.",
             "in": "query",
             "required": false,
@@ -2134,7 +2866,7 @@
             "format": "int64"
           },
           {
-            "name": "start_time",
+            "name": "startTime",
             "description": "The start time for tournaments. Defaults to epoch.",
             "in": "query",
             "required": false,
@@ -2142,7 +2874,7 @@
             "format": "int64"
           },
           {
-            "name": "end_time",
+            "name": "endTime",
             "description": "The end time for tournaments. Defaults to +1 year from current Unix time.",
             "in": "query",
             "required": false,
@@ -2170,28 +2902,34 @@
         ]
       }
     },
-    "/v2/tournament/{tournament_id}": {
+    "/v2/tournament/{tournamentId}": {
       "get": {
         "summary": "List tournament records.",
-        "operationId": "ListTournamentRecords",
+        "operationId": "Nakama_ListTournamentRecords",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiTournamentRecordList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "tournament_id",
+            "name": "tournamentId",
             "description": "The ID of the tournament to list for.",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "owner_ids",
+            "name": "ownerIds",
             "description": "One or more owners to retrieve records for.",
             "in": "query",
             "required": false,
@@ -2229,20 +2967,65 @@
           "Nakama"
         ]
       },
-      "put": {
+      "post": {
         "summary": "Write a record to a tournament.",
-        "operationId": "WriteTournamentRecord",
+        "operationId": "Nakama_WriteTournamentRecord2",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiLeaderboardRecord"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "tournament_id",
+            "name": "tournamentId",
+            "description": "The tournament ID to write the record for.",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "description": "Record input.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/WriteTournamentRecordRequestTournamentRecordWrite"
+            }
+          }
+        ],
+        "tags": [
+          "Nakama"
+        ]
+      },
+      "put": {
+        "summary": "Write a record to a tournament.",
+        "operationId": "Nakama_WriteTournamentRecord",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiLeaderboardRecord"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "tournamentId",
             "description": "The tournament ID to write the record for.",
             "in": "path",
             "required": true,
@@ -2263,21 +3046,27 @@
         ]
       }
     },
-    "/v2/tournament/{tournament_id}/join": {
+    "/v2/tournament/{tournamentId}/join": {
       "post": {
         "summary": "Attempt to join an open and running tournament.",
-        "operationId": "JoinTournament",
+        "operationId": "Nakama_JoinTournament",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "properties": {}
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "tournament_id",
+            "name": "tournamentId",
             "description": "The ID of the tournament to join. The tournament must already exist.",
             "in": "path",
             "required": true,
@@ -2289,28 +3078,34 @@
         ]
       }
     },
-    "/v2/tournament/{tournament_id}/owner/{owner_id}": {
+    "/v2/tournament/{tournamentId}/owner/{ownerId}": {
       "get": {
         "summary": "List tournament records for a given owner.",
-        "operationId": "ListTournamentRecordsAroundOwner",
+        "operationId": "Nakama_ListTournamentRecordsAroundOwner",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiTournamentRecordList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "tournament_id",
+            "name": "tournamentId",
             "description": "The ID of the tournament to list for.",
             "in": "path",
             "required": true,
             "type": "string"
           },
           {
-            "name": "owner_id",
+            "name": "ownerId",
             "description": "The owner to retrieve records around.",
             "in": "path",
             "required": true,
@@ -2341,12 +3136,18 @@
     "/v2/user": {
       "get": {
         "summary": "Fetch zero or more users by ID and/or username.",
-        "operationId": "GetUsers",
+        "operationId": "Nakama_GetUsers",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiUsers"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
             }
           }
         },
@@ -2374,7 +3175,7 @@
             "collectionFormat": "multi"
           },
           {
-            "name": "facebook_ids",
+            "name": "facebookIds",
             "description": "The Facebook ID of a user.",
             "in": "query",
             "required": false,
@@ -2390,21 +3191,27 @@
         ]
       }
     },
-    "/v2/user/{user_id}/group": {
+    "/v2/user/{userId}/group": {
       "get": {
         "summary": "List groups the current user belongs to.",
-        "operationId": "ListUserGroups",
+        "operationId": "Nakama_ListUserGroups",
         "responses": {
           "200": {
             "description": "A successful response.",
             "schema": {
               "$ref": "#/definitions/apiUserGroupList"
             }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
           }
         },
         "parameters": [
           {
-            "name": "user_id",
+            "name": "userId",
             "description": "ID of the user.",
             "in": "path",
             "required": true,
@@ -2471,6 +3278,28 @@
       },
       "description": "A single group-role pair."
     },
+    "ValidatedPurchaseEnvironment": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "SANDBOX",
+        "PRODUCTION"
+      ],
+      "default": "UNKNOWN",
+      "description": "- UNKNOWN: Unknown environment.\n - SANDBOX: Sandbox/test environment.\n - PRODUCTION: Production environment.",
+      "title": "Environment where the purchase took place"
+    },
+    "ValidatedPurchaseStore": {
+      "type": "string",
+      "enum": [
+        "APPLE_APP_STORE",
+        "GOOGLE_PLAY_STORE",
+        "HUAWEI_APP_GALLERY"
+      ],
+      "default": "APPLE_APP_STORE",
+      "description": "- APPLE_APP_STORE: Apple App Store\n - GOOGLE_PLAY_STORE: Google Play Store\n - HUAWEI_APP_GALLERY: Huawei App Gallery",
+      "title": "Validation Provider"
+    },
     "WriteLeaderboardRecordRequestLeaderboardRecordWrite": {
       "type": "object",
       "properties": {
@@ -2487,6 +3316,10 @@
         "metadata": {
           "type": "string",
           "description": "Optional record metadata."
+        },
+        "operator": {
+          "$ref": "#/definitions/apiOverrideOperator",
+          "description": "Operator override."
         }
       },
       "description": "Record values to write."
@@ -2507,6 +3340,10 @@
         "metadata": {
           "type": "string",
           "description": "A JSON object of additional properties (optional)."
+        },
+        "operator": {
+          "$ref": "#/definitions/apiOverrideOperator",
+          "description": "Operator override."
         }
       },
       "description": "Record values to write."
@@ -2533,22 +3370,39 @@
           },
           "description": "The devices which belong to the user's account."
         },
-        "custom_id": {
+        "customId": {
           "type": "string",
           "description": "The custom id in the user's account."
         },
-        "verify_time": {
+        "verifyTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the user's email was verified."
         },
-        "disable_time": {
+        "disableTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the user's account was disabled/banned."
         }
       },
       "description": "A user with additional account details. Always the current user."
+    },
+    "apiAccountApple": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "The ID token received from Apple to validate."
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra information that will be bundled in the session token."
+        }
+      },
+      "description": "Send a Apple Sign In token to the server. Used with authenticate/link/unlink."
     },
     "apiAccountCustom": {
       "type": "object",
@@ -2625,7 +3479,7 @@
     "apiAccountFacebookInstantGame": {
       "type": "object",
       "properties": {
-        "signed_player_info": {
+        "signedPlayerInfo": {
           "type": "string",
           "title": "The OAuth token received from a Facebook Instant Game that may be decoded with the Application Secret (must be available with the nakama configuration)"
         },
@@ -2642,15 +3496,15 @@
     "apiAccountGameCenter": {
       "type": "object",
       "properties": {
-        "player_id": {
+        "playerId": {
           "type": "string",
           "description": "Player ID (generated by GameCenter)."
         },
-        "bundle_id": {
+        "bundleId": {
           "type": "string",
           "description": "Bundle ID (generated by GameCenter)."
         },
-        "timestamp_seconds": {
+        "timestampSeconds": {
           "type": "string",
           "format": "int64",
           "description": "Time since UNIX epoch when the signature was created."
@@ -2663,7 +3517,7 @@
           "type": "string",
           "description": "The verification signature data generated."
         },
-        "public_key_url": {
+        "publicKeyUrl": {
           "type": "string",
           "description": "The URL for the public encryption key."
         },
@@ -2714,11 +3568,11 @@
     "apiChannelMessage": {
       "type": "object",
       "properties": {
-        "channel_id": {
+        "channelId": {
           "type": "string",
           "description": "The channel this message belongs to."
         },
-        "message_id": {
+        "messageId": {
           "type": "string",
           "description": "The unique ID of this message."
         },
@@ -2727,7 +3581,7 @@
           "format": "int32",
           "description": "The code representing a message type or category."
         },
-        "sender_id": {
+        "senderId": {
           "type": "string",
           "description": "Message sender, usually a user ID."
         },
@@ -2739,34 +3593,33 @@
           "type": "string",
           "description": "The content payload."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the message was created."
         },
-        "update_time": {
+        "updateTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the message was last updated."
         },
         "persistent": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if the message was persisted to the channel's history, false otherwise."
         },
-        "room_name": {
+        "roomName": {
           "type": "string",
           "description": "The name of the chat room, or an empty string if this message was not sent through a chat room."
         },
-        "group_id": {
+        "groupId": {
           "type": "string",
           "description": "The ID of the group, or an empty string if this message was not sent through a group channel."
         },
-        "user_id_one": {
+        "userIdOne": {
           "type": "string",
           "description": "The ID of the first DM user, or an empty string if this message was not sent through a DM chat."
         },
-        "user_id_two": {
+        "userIdTwo": {
           "type": "string",
           "description": "The ID of the second DM user, or an empty string if this message was not sent through a DM chat."
         }
@@ -2783,13 +3636,17 @@
           },
           "description": "A list of messages."
         },
-        "next_cursor": {
+        "nextCursor": {
           "type": "string",
-          "description": "The cursor to send when retireving the next page, if any."
+          "description": "The cursor to send when retrieving the next page, if any."
         },
-        "prev_cursor": {
+        "prevCursor": {
           "type": "string",
           "description": "The cursor to send when retrieving the previous page, if any."
+        },
+        "cacheableCursor": {
+          "type": "string",
+          "description": "Cacheable cursor to list newer messages. Durable and designed to be stored, unlike next/prev cursors."
         }
       },
       "description": "A list of channel messages, usually a result of a list operation."
@@ -2805,20 +3662,19 @@
           "type": "string",
           "description": "A description for the group."
         },
-        "lang_tag": {
+        "langTag": {
           "type": "string",
           "description": "The language expected to be a tag which follows the BCP-47 spec."
         },
-        "avatar_url": {
+        "avatarUrl": {
           "type": "string",
           "description": "A URL for an avatar image."
         },
         "open": {
           "type": "boolean",
-          "format": "boolean",
           "description": "Mark a group as open or not where only admins can accept members."
         },
-        "max_count": {
+        "maxCount": {
           "type": "integer",
           "format": "int32",
           "description": "Maximum number of group members."
@@ -2847,7 +3703,7 @@
     "apiDeleteStorageObjectsRequest": {
       "type": "object",
       "properties": {
-        "object_ids": {
+        "objectIds": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/apiDeleteStorageObjectId"
@@ -2878,7 +3734,6 @@
         },
         "external": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if the event came directly from a client call, false otherwise."
         }
       },
@@ -2895,6 +3750,11 @@
           "type": "integer",
           "format": "int32",
           "description": "The friend status."
+        },
+        "updateTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time of the latest relationship update."
         }
       },
       "description": "A friend of a user."
@@ -2923,7 +3783,7 @@
           "type": "string",
           "description": "The id of a group."
         },
-        "creator_id": {
+        "creatorId": {
           "type": "string",
           "description": "The id of the user who created the group."
         },
@@ -2935,7 +3795,7 @@
           "type": "string",
           "description": "A description for the group."
         },
-        "lang_tag": {
+        "langTag": {
           "type": "string",
           "description": "The language expected to be a tag which follows the BCP-47 spec."
         },
@@ -2943,31 +3803,30 @@
           "type": "string",
           "description": "Additional information stored as a JSON object."
         },
-        "avatar_url": {
+        "avatarUrl": {
           "type": "string",
           "description": "A URL for an avatar image."
         },
         "open": {
           "type": "boolean",
-          "format": "boolean",
           "description": "Anyone can join open groups, otherwise only admins can accept members."
         },
-        "edge_count": {
+        "edgeCount": {
           "type": "integer",
           "format": "int32",
           "description": "The current count of all members in the group."
         },
-        "max_count": {
+        "maxCount": {
           "type": "integer",
           "format": "int32",
           "description": "The maximum number of members allowed."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the group was created."
         },
-        "update_time": {
+        "updateTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the group was last updated."
@@ -2995,7 +3854,7 @@
     "apiGroupUserList": {
       "type": "object",
       "properties": {
-        "group_users": {
+        "groupUsers": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/GroupUserListGroupUser"
@@ -3012,11 +3871,11 @@
     "apiLeaderboardRecord": {
       "type": "object",
       "properties": {
-        "leaderboard_id": {
+        "leaderboardId": {
           "type": "string",
           "description": "The ID of the leaderboard this score belongs to."
         },
-        "owner_id": {
+        "ownerId": {
           "type": "string",
           "description": "The ID of the score owner, usually a user or group."
         },
@@ -3034,7 +3893,7 @@
           "format": "int64",
           "description": "An optional subscore value."
         },
-        "num_score": {
+        "numScore": {
           "type": "integer",
           "format": "int32",
           "description": "The number of submissions to this score record."
@@ -3043,17 +3902,17 @@
           "type": "string",
           "description": "Metadata."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the leaderboard record was created."
         },
-        "update_time": {
+        "updateTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the leaderboard record was updated."
         },
-        "expiry_time": {
+        "expiryTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the leaderboard record expires."
@@ -3063,7 +3922,7 @@
           "format": "int64",
           "description": "The rank of this record."
         },
-        "max_num_score": {
+        "maxNumScore": {
           "type": "integer",
           "format": "int64",
           "description": "The maximum number of score updates allowed by the owner."
@@ -3081,34 +3940,47 @@
           },
           "description": "A list of leaderboard records."
         },
-        "owner_records": {
+        "ownerRecords": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/apiLeaderboardRecord"
           },
           "description": "A batched set of leaderboard records belonging to specified owners."
         },
-        "next_cursor": {
+        "nextCursor": {
           "type": "string",
           "description": "The cursor to send when retrieving the next page, if any."
         },
-        "prev_cursor": {
+        "prevCursor": {
           "type": "string",
           "description": "The cursor to send when retrieving the previous page, if any."
         }
       },
       "description": "A set of leaderboard records, may be part of a leaderboard records page or a batch of individual records."
     },
+    "apiLinkSteamRequest": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/apiAccountSteam",
+          "description": "The Facebook account details."
+        },
+        "sync": {
+          "type": "boolean",
+          "description": "Import Steam friends for the user."
+        }
+      },
+      "description": "Link Steam to the current user's account."
+    },
     "apiMatch": {
       "type": "object",
       "properties": {
-        "match_id": {
+        "matchId": {
           "type": "string",
           "description": "The ID of the match, can be used to join."
         },
         "authoritative": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if it's an server-managed authoritative match, false otherwise."
         },
         "label": {
@@ -3119,6 +3991,15 @@
           "type": "integer",
           "format": "int32",
           "description": "Current number of users in the match."
+        },
+        "tickRate": {
+          "type": "integer",
+          "format": "int32",
+          "title": "Tick Rate"
+        },
+        "handlerName": {
+          "type": "string",
+          "title": "Handler name"
         }
       },
       "description": "Represents a realtime match."
@@ -3156,18 +4037,17 @@
           "format": "int32",
           "description": "Category code for this notification."
         },
-        "sender_id": {
+        "senderId": {
           "type": "string",
           "description": "ID of the sender, if a user. Otherwise 'null'."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the notification was created."
         },
         "persistent": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if this notification was persisted to the database."
         }
       },
@@ -3183,12 +4063,24 @@
           },
           "description": "Collection of notifications."
         },
-        "cacheable_cursor": {
+        "cacheableCursor": {
           "type": "string",
           "description": "Use this cursor to paginate notifications. Cache this to catch up to new notifications."
         }
       },
       "description": "A collection of zero or more notifications."
+    },
+    "apiOverrideOperator": {
+      "type": "string",
+      "enum": [
+        "NO_OVERRIDE",
+        "BEST",
+        "SET",
+        "INCREMENT",
+        "DECREMENT"
+      ],
+      "default": "NO_OVERRIDE",
+      "description": "Operator that can be used to override the one set in the leaderboard.\n\n - NO_OVERRIDE: Do not override the leaderboard operator.\n - BEST: Override the leaderboard operator with BEST.\n - SET: Override the leaderboard operator with SET.\n - INCREMENT: Override the leaderboard operator with INCREMENT.\n - DECREMENT: Override the leaderboard operator with DECREMENT."
     },
     "apiReadStorageObjectId": {
       "type": "object",
@@ -3201,7 +4093,7 @@
           "type": "string",
           "description": "The key of the object within the collection."
         },
-        "user_id": {
+        "userId": {
           "type": "string",
           "description": "The user owner of the object."
         }
@@ -3211,7 +4103,7 @@
     "apiReadStorageObjectsRequest": {
       "type": "object",
       "properties": {
-        "object_ids": {
+        "objectIds": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/apiReadStorageObjectId"
@@ -3232,7 +4124,7 @@
           "type": "string",
           "description": "The payload of the function which must be a JSON object."
         },
-        "http_key": {
+        "httpKey": {
           "type": "string",
           "description": "The authentication key used when executed as a non-client HTTP request."
         }
@@ -3244,15 +4136,49 @@
       "properties": {
         "created": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if the corresponding account was just created, false otherwise."
         },
         "token": {
           "type": "string",
           "description": "Authentication credentials."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Refresh token that can be used for session token renewal."
         }
       },
       "description": "A user's session used to authenticate messages."
+    },
+    "apiSessionLogoutRequest": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Session token to log out."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Refresh token to invalidate."
+        }
+      },
+      "description": "Log out a session, invalidate a refresh token, or log out all sessions/refresh tokens for a user."
+    },
+    "apiSessionRefreshRequest": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Refresh token."
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra information that will be bundled in the session token."
+        }
+      },
+      "description": "Authenticate against the server with a refresh token."
     },
     "apiStorageObject": {
       "type": "object",
@@ -3265,7 +4191,7 @@
           "type": "string",
           "description": "The key of the object within the collection."
         },
-        "user_id": {
+        "userId": {
           "type": "string",
           "description": "The user owner of the object."
         },
@@ -3277,22 +4203,22 @@
           "type": "string",
           "description": "The version hash of the object."
         },
-        "permission_read": {
+        "permissionRead": {
           "type": "integer",
           "format": "int32",
           "description": "The read access permissions for the object."
         },
-        "permission_write": {
+        "permissionWrite": {
           "type": "integer",
           "format": "int32",
           "description": "The write access permissions for the object."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the object was created."
         },
-        "update_time": {
+        "updateTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the object was last updated."
@@ -3315,7 +4241,7 @@
           "type": "string",
           "description": "The version hash of the object."
         },
-        "user_id": {
+        "userId": {
           "type": "string",
           "description": "The owner of the object."
         }
@@ -3385,7 +4311,7 @@
           "format": "int64",
           "description": "The category of the tournament. e.g. \"vip\" could be category 1."
         },
-        "sort_order": {
+        "sortOrder": {
           "type": "integer",
           "format": "int64",
           "description": "ASC or DESC sort mode of scores in the tournament."
@@ -3395,27 +4321,26 @@
           "format": "int64",
           "description": "The current number of players in the tournament."
         },
-        "max_size": {
+        "maxSize": {
           "type": "integer",
           "format": "int64",
           "description": "The maximum number of players for the tournament."
         },
-        "max_num_score": {
+        "maxNumScore": {
           "type": "integer",
           "format": "int64",
           "description": "The maximum score updates allowed per player for the current tournament."
         },
-        "can_enter": {
+        "canEnter": {
           "type": "boolean",
-          "format": "boolean",
           "description": "True if the tournament is active and can enter. A computed value."
         },
-        "end_active": {
+        "endActive": {
           "type": "integer",
           "format": "int64",
           "description": "The UNIX time when the tournament stops being active until next reset. A computed value."
         },
-        "next_reset": {
+        "nextReset": {
           "type": "integer",
           "format": "int64",
           "description": "The UNIX time when the tournament is next playable. A computed value."
@@ -3424,17 +4349,17 @@
           "type": "string",
           "description": "Additional information stored as a JSON object."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the tournament was created."
         },
-        "start_time": {
+        "startTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the tournament will start."
         },
-        "end_time": {
+        "endTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the tournament will be stopped."
@@ -3444,7 +4369,7 @@
           "format": "int64",
           "description": "Duration of the tournament in seconds."
         },
-        "start_active": {
+        "startActive": {
           "type": "integer",
           "format": "int64",
           "description": "The UNIX time when the tournament start being active. A computed value."
@@ -3479,18 +4404,18 @@
           },
           "description": "A list of tournament records."
         },
-        "owner_records": {
+        "ownerRecords": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/apiLeaderboardRecord"
           },
           "description": "A batched set of tournament records belonging to specified owners."
         },
-        "next_cursor": {
+        "nextCursor": {
           "type": "string",
           "description": "The cursor to send when retireving the next page (optional)."
         },
-        "prev_cursor": {
+        "prevCursor": {
           "type": "string",
           "description": "The cursor to send when retrieving the previous page (optional)."
         }
@@ -3504,15 +4429,15 @@
           "type": "string",
           "description": "The username of the user's account."
         },
-        "display_name": {
+        "displayName": {
           "type": "string",
           "description": "The display name of the user."
         },
-        "avatar_url": {
+        "avatarUrl": {
           "type": "string",
           "description": "A URL for an avatar image."
         },
-        "lang_tag": {
+        "langTag": {
           "type": "string",
           "description": "The language expected to be a tag which follows the BCP-47 spec."
         },
@@ -3530,7 +4455,7 @@
     "apiUpdateGroupRequest": {
       "type": "object",
       "properties": {
-        "group_id": {
+        "groupId": {
           "type": "string",
           "description": "The ID of the group to update."
         },
@@ -3542,17 +4467,16 @@
           "type": "string",
           "description": "Description string."
         },
-        "lang_tag": {
+        "langTag": {
           "type": "string",
           "description": "Lang tag."
         },
-        "avatar_url": {
+        "avatarUrl": {
           "type": "string",
           "description": "Avatar URL."
         },
         "open": {
           "type": "boolean",
-          "format": "boolean",
           "description": "Open is true if anyone should be allowed to join, or false if joins must be approved by a group admin."
         }
       },
@@ -3569,15 +4493,15 @@
           "type": "string",
           "description": "The username of the user's account."
         },
-        "display_name": {
+        "displayName": {
           "type": "string",
           "description": "The display name of the user."
         },
-        "avatar_url": {
+        "avatarUrl": {
           "type": "string",
           "description": "A URL for an avatar image."
         },
-        "lang_tag": {
+        "langTag": {
           "type": "string",
           "description": "The language expected to be a tag which follows the BCP-47 spec."
         },
@@ -3593,45 +4517,48 @@
           "type": "string",
           "description": "Additional information stored as a JSON object."
         },
-        "facebook_id": {
+        "facebookId": {
           "type": "string",
           "description": "The Facebook id in the user's account."
         },
-        "google_id": {
+        "googleId": {
           "type": "string",
           "description": "The Google id in the user's account."
         },
-        "gamecenter_id": {
+        "gamecenterId": {
           "type": "string",
           "description": "The Apple Game Center in of the user's account."
         },
-        "steam_id": {
+        "steamId": {
           "type": "string",
           "description": "The Steam id in the user's account."
         },
         "online": {
           "type": "boolean",
-          "format": "boolean",
           "description": "Indicates whether the user is currently online."
         },
-        "edge_count": {
+        "edgeCount": {
           "type": "integer",
           "format": "int32",
           "description": "Number of related edges to this user."
         },
-        "create_time": {
+        "createTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the user was created."
         },
-        "update_time": {
+        "updateTime": {
           "type": "string",
           "format": "date-time",
           "description": "The UNIX time when the user was last updated."
         },
-        "facebook_instant_game_id": {
+        "facebookInstantGameId": {
           "type": "string",
-          "description": "The Facebook Instant Game id in the user's account."
+          "description": "The Facebook Instant Game ID in the user's account."
+        },
+        "appleId": {
+          "type": "string",
+          "description": "The Apple Sign In ID in the user's account."
         }
       },
       "description": "A user in the server."
@@ -3639,7 +4566,7 @@
     "apiUserGroupList": {
       "type": "object",
       "properties": {
-        "user_groups": {
+        "userGroups": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/UserGroupListUserGroup"
@@ -3666,6 +4593,94 @@
       },
       "description": "A collection of zero or more users."
     },
+    "apiValidatePurchaseAppleRequest": {
+      "type": "object",
+      "properties": {
+        "receipt": {
+          "type": "string",
+          "description": "Base64 encoded Apple receipt data payload."
+        }
+      },
+      "title": "Apple IAP Purchases validation request"
+    },
+    "apiValidatePurchaseGoogleRequest": {
+      "type": "object",
+      "properties": {
+        "purchase": {
+          "type": "string",
+          "description": "JSON encoded Google purchase payload."
+        }
+      },
+      "title": "Google IAP Purchase validation request"
+    },
+    "apiValidatePurchaseHuaweiRequest": {
+      "type": "object",
+      "properties": {
+        "purchase": {
+          "type": "string",
+          "description": "JSON encoded Huawei InAppPurchaseData."
+        },
+        "signature": {
+          "type": "string",
+          "description": "InAppPurchaseData signature."
+        }
+      },
+      "title": "Huawei IAP Purchase validation request"
+    },
+    "apiValidatePurchaseResponse": {
+      "type": "object",
+      "properties": {
+        "validatedPurchases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/apiValidatedPurchase"
+          },
+          "description": "Newly seen validated purchases."
+        }
+      },
+      "title": "Validate IAP response"
+    },
+    "apiValidatedPurchase": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Purchase Product ID."
+        },
+        "transactionId": {
+          "type": "string",
+          "description": "Purchase Transaction ID."
+        },
+        "store": {
+          "$ref": "#/definitions/ValidatedPurchaseStore",
+          "title": "Store identifier"
+        },
+        "purchaseTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UNIX Timestamp when the purchase was done."
+        },
+        "createTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UNIX Timestamp when the receipt validation was stored in DB."
+        },
+        "updateTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UNIX Timestamp when the receipt validation was updated in DB."
+        },
+        "providerResponse": {
+          "type": "string",
+          "description": "Raw provider validation response."
+        },
+        "environment": {
+          "$ref": "#/definitions/ValidatedPurchaseEnvironment",
+          "description": "Whether the purchase was done in production or sandbox environment."
+        }
+      },
+      "description": "Validated Purchase stored by Nakama."
+    },
     "apiWriteStorageObject": {
       "type": "object",
       "properties": {
@@ -3685,12 +4700,12 @@
           "type": "string",
           "description": "The version hash of the object to check. Possible values are: [\"\", \"*\", \"#hash#\"]."
         },
-        "permission_read": {
+        "permissionRead": {
           "type": "integer",
           "format": "int32",
           "description": "The read access permissions for the object."
         },
-        "permission_write": {
+        "permissionWrite": {
           "type": "integer",
           "format": "int32",
           "description": "The write access permissions for the object."
@@ -3710,6 +4725,36 @@
         }
       },
       "description": "Write objects to the storage engine."
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "typeUrl": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "format": "byte"
+        }
+      }
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
     }
   },
   "securityDefinitions": {

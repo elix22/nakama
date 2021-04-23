@@ -17,14 +17,58 @@ package server
 import (
 	"context"
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/heroiclabs/nakama-common/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func (s *ApiServer) UnlinkCustom(ctx context.Context, in *api.AccountCustom) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkApple(ctx context.Context, in *api.AccountApple) (*emptypb.Empty, error) {
+	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
+
+	// Before hook.
+	if fn := s.runtime.BeforeUnlinkApple(); fn != nil {
+		beforeFn := func(clientIP, clientPort string) error {
+			result, err, code := fn(ctx, s.logger, userID.String(), ctx.Value(ctxUsernameKey{}).(string), ctx.Value(ctxVarsKey{}).(map[string]string), ctx.Value(ctxExpiryKey{}).(int64), clientIP, clientPort, in)
+			if err != nil {
+				return status.Error(code, err.Error())
+			}
+			if result == nil {
+				// If result is nil, requested resource is disabled.
+				s.logger.Warn("Intercepted a disabled resource.", zap.Any("resource", ctx.Value(ctxFullMethodKey{}).(string)), zap.String("uid", userID.String()))
+				return status.Error(codes.NotFound, "Requested resource was not found.")
+			}
+			in = result
+			return nil
+		}
+
+		// Execute the before function lambda wrapped in a trace for stats measurement.
+		err := traceApiBefore(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), beforeFn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err := UnlinkApple(ctx, s.logger, s.db, s.config, s.socialClient, userID, in.Token)
+	if err != nil {
+		return nil, err
+	}
+
+	// After hook.
+	if fn := s.runtime.AfterUnlinkApple(); fn != nil {
+		afterFn := func(clientIP, clientPort string) error {
+			return fn(ctx, s.logger, userID.String(), ctx.Value(ctxUsernameKey{}).(string), ctx.Value(ctxVarsKey{}).(map[string]string), ctx.Value(ctxExpiryKey{}).(int64), clientIP, clientPort, in)
+		}
+
+		// Execute the after function lambda wrapped in a trace for stats measurement.
+		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (s *ApiServer) UnlinkCustom(ctx context.Context, in *api.AccountCustom) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -65,10 +109,10 @@ func (s *ApiServer) UnlinkCustom(ctx context.Context, in *api.AccountCustom) (*e
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkDevice(ctx context.Context, in *api.AccountDevice) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkDevice(ctx context.Context, in *api.AccountDevice) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -109,10 +153,10 @@ func (s *ApiServer) UnlinkDevice(ctx context.Context, in *api.AccountDevice) (*e
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkEmail(ctx context.Context, in *api.AccountEmail) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkEmail(ctx context.Context, in *api.AccountEmail) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -153,10 +197,10 @@ func (s *ApiServer) UnlinkEmail(ctx context.Context, in *api.AccountEmail) (*emp
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkFacebook(ctx context.Context, in *api.AccountFacebook) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkFacebook(ctx context.Context, in *api.AccountFacebook) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -182,7 +226,7 @@ func (s *ApiServer) UnlinkFacebook(ctx context.Context, in *api.AccountFacebook)
 		}
 	}
 
-	err := UnlinkFacebook(ctx, s.logger, s.db, s.socialClient, userID, in.Token)
+	err := UnlinkFacebook(ctx, s.logger, s.db, s.socialClient, s.config.GetSocial().FacebookLimitedLogin.AppId, userID, in.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -197,10 +241,10 @@ func (s *ApiServer) UnlinkFacebook(ctx context.Context, in *api.AccountFacebook)
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkFacebookInstantGame(ctx context.Context, in *api.AccountFacebookInstantGame) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkFacebookInstantGame(ctx context.Context, in *api.AccountFacebookInstantGame) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -241,10 +285,10 @@ func (s *ApiServer) UnlinkFacebookInstantGame(ctx context.Context, in *api.Accou
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkGameCenter(ctx context.Context, in *api.AccountGameCenter) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkGameCenter(ctx context.Context, in *api.AccountGameCenter) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -285,10 +329,10 @@ func (s *ApiServer) UnlinkGameCenter(ctx context.Context, in *api.AccountGameCen
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkGoogle(ctx context.Context, in *api.AccountGoogle) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkGoogle(ctx context.Context, in *api.AccountGoogle) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -329,10 +373,10 @@ func (s *ApiServer) UnlinkGoogle(ctx context.Context, in *api.AccountGoogle) (*e
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) UnlinkSteam(ctx context.Context, in *api.AccountSteam) (*empty.Empty, error) {
+func (s *ApiServer) UnlinkSteam(ctx context.Context, in *api.AccountSteam) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -373,5 +417,5 @@ func (s *ApiServer) UnlinkSteam(ctx context.Context, in *api.AccountSteam) (*emp
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }

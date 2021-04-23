@@ -18,19 +18,19 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/golang/protobuf/jsonpb"
 	"go.uber.org/atomic"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"path/filepath"
 	"plugin"
 	"strings"
 	"sync"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/heroiclabs/nakama-common/rtapi"
 	"github.com/heroiclabs/nakama-common/runtime"
-	"github.com/heroiclabs/nakama/v2/social"
+	"github.com/heroiclabs/nakama/v3/social"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 )
@@ -168,6 +168,90 @@ func (ri *RuntimeGoInitializer) RegisterAfterUpdateAccount(fn func(ctx context.C
 	ri.afterReq.afterUpdateAccountFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.UpdateAccountRequest) error {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
 		return fn(ctx, ri.logger, ri.db, ri.nk, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeSessionRefresh(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.SessionRefreshRequest) (*api.SessionRefreshRequest, error)) error {
+	ri.beforeReq.beforeSessionRefreshFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.SessionRefreshRequest) (*api.SessionRefreshRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterSessionRefresh(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, out *api.Session, in *api.SessionRefreshRequest) error) error {
+	ri.afterReq.afterSessionRefreshFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.Session, in *api.SessionRefreshRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeSessionLogout(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.SessionLogoutRequest) (*api.SessionLogoutRequest, error)) error {
+	ri.beforeReq.beforeSessionLogoutFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.SessionLogoutRequest) (*api.SessionLogoutRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterSessionLogout(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.SessionLogoutRequest) error) error {
+	ri.afterReq.afterSessionLogoutFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.SessionLogoutRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeAuthenticateApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AuthenticateAppleRequest) (*api.AuthenticateAppleRequest, error)) error {
+	ri.beforeReq.beforeAuthenticateAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AuthenticateAppleRequest) (*api.AuthenticateAppleRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterAuthenticateApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, out *api.Session, in *api.AuthenticateAppleRequest) error) error {
+	ri.afterReq.afterAuthenticateAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.Session, in *api.AuthenticateAppleRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
 	}
 	return nil
 }
@@ -564,6 +648,34 @@ func (ri *RuntimeGoInitializer) RegisterAfterImportFacebookFriends(fn func(ctx c
 	return nil
 }
 
+func (ri *RuntimeGoInitializer) RegisterBeforeImportSteamFriends(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ImportSteamFriendsRequest) (*api.ImportSteamFriendsRequest, error)) error {
+	ri.beforeReq.beforeImportSteamFriendsFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ImportSteamFriendsRequest) (*api.ImportSteamFriendsRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterImportSteamFriends(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ImportSteamFriendsRequest) error) error {
+	ri.afterReq.afterImportSteamFriendsFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ImportSteamFriendsRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, in)
+	}
+	return nil
+}
+
 func (ri *RuntimeGoInitializer) RegisterBeforeCreateGroup(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.CreateGroupRequest) (*api.CreateGroupRequest, error)) error {
 	ri.beforeReq.beforeCreateGroupFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.CreateGroupRequest) (*api.CreateGroupRequest, error, codes.Code) {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
@@ -816,6 +928,34 @@ func (ri *RuntimeGoInitializer) RegisterAfterPromoteGroupUsers(fn func(ctx conte
 	return nil
 }
 
+func (ri *RuntimeGoInitializer) RegisterBeforeDemoteGroupUsers(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.DemoteGroupUsersRequest) (*api.DemoteGroupUsersRequest, error)) error {
+	ri.beforeReq.beforeDemoteGroupUsersFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.DemoteGroupUsersRequest) (*api.DemoteGroupUsersRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterDemoteGroupUsers(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.DemoteGroupUsersRequest) error) error {
+	ri.afterReq.afterDemoteGroupUsersFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.DemoteGroupUsersRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, in)
+	}
+	return nil
+}
+
 func (ri *RuntimeGoInitializer) RegisterBeforeListGroupUsers(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ListGroupUsersRequest) (*api.ListGroupUsersRequest, error)) error {
 	ri.beforeReq.beforeListGroupUsersFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ListGroupUsersRequest) (*api.ListGroupUsersRequest, error, codes.Code) {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
@@ -1008,6 +1148,34 @@ func (ri *RuntimeGoInitializer) RegisterAfterListLeaderboardRecordsAroundOwner(f
 	ri.afterReq.afterListLeaderboardRecordsAroundOwnerFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.LeaderboardRecordList, in *api.ListLeaderboardRecordsAroundOwnerRequest) error {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
 		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeLinkApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountApple) (*api.AccountApple, error)) error {
+	ri.beforeReq.beforeLinkAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountApple) (*api.AccountApple, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterLinkApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountApple) error) error {
+	ri.afterReq.afterLinkAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountApple) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, in)
 	}
 	return nil
 }
@@ -1208,8 +1376,8 @@ func (ri *RuntimeGoInitializer) RegisterAfterLinkGoogle(fn func(ctx context.Cont
 	return nil
 }
 
-func (ri *RuntimeGoInitializer) RegisterBeforeLinkSteam(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountSteam) (*api.AccountSteam, error)) error {
-	ri.beforeReq.beforeLinkSteamFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountSteam) (*api.AccountSteam, error, codes.Code) {
+func (ri *RuntimeGoInitializer) RegisterBeforeLinkSteam(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.LinkSteamRequest) (*api.LinkSteamRequest, error)) error {
+	ri.beforeReq.beforeLinkSteamFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.LinkSteamRequest) (*api.LinkSteamRequest, error, codes.Code) {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
 		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
 		if fnErr != nil {
@@ -1228,8 +1396,8 @@ func (ri *RuntimeGoInitializer) RegisterBeforeLinkSteam(fn func(ctx context.Cont
 	return nil
 }
 
-func (ri *RuntimeGoInitializer) RegisterAfterLinkSteam(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountSteam) error) error {
-	ri.afterReq.afterLinkSteamFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountSteam) error {
+func (ri *RuntimeGoInitializer) RegisterAfterLinkSteam(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.LinkSteamRequest) error) error {
+	ri.afterReq.afterLinkSteamFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.LinkSteamRequest) error {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
 		return fn(ctx, ri.logger, ri.db, ri.nk, in)
 	}
@@ -1572,6 +1740,34 @@ func (ri *RuntimeGoInitializer) RegisterAfterListTournamentRecordsAroundOwner(fn
 	return nil
 }
 
+func (ri *RuntimeGoInitializer) RegisterBeforeUnlinkApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountApple) (*api.AccountApple, error)) error {
+	ri.beforeReq.beforeUnlinkAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountApple) (*api.AccountApple, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterUnlinkApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountApple) error) error {
+	ri.afterReq.afterUnlinkAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountApple) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, in)
+	}
+	return nil
+}
+
 func (ri *RuntimeGoInitializer) RegisterBeforeUnlinkCustom(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.AccountCustom) (*api.AccountCustom, error)) error {
 	ri.beforeReq.beforeUnlinkCustomFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.AccountCustom) (*api.AccountCustom, error, codes.Code) {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
@@ -1824,6 +2020,90 @@ func (ri *RuntimeGoInitializer) RegisterAfterGetUsers(fn func(ctx context.Contex
 	return nil
 }
 
+func (ri *RuntimeGoInitializer) RegisterBeforeValidatePurchaseApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ValidatePurchaseAppleRequest) (*api.ValidatePurchaseAppleRequest, error)) error {
+	ri.beforeReq.beforeValidatePurchaseAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ValidatePurchaseAppleRequest) (*api.ValidatePurchaseAppleRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterValidatePurchaseApple(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseAppleRequest) error) error {
+	ri.afterReq.afterValidatePurchaseAppleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseAppleRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeValidatePurchaseGoogle(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ValidatePurchaseGoogleRequest) (*api.ValidatePurchaseGoogleRequest, error)) error {
+	ri.beforeReq.beforeValidatePurchaseGoogleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ValidatePurchaseGoogleRequest) (*api.ValidatePurchaseGoogleRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterValidatePurchaseGoogle(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseGoogleRequest) error) error {
+	ri.afterReq.afterValidatePurchaseGoogleFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseGoogleRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterBeforeValidatePurchaseHuawei(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.ValidatePurchaseHuaweiRequest) (*api.ValidatePurchaseHuaweiRequest, error)) error {
+	ri.beforeReq.beforeValidatePurchaseHuaweiFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.ValidatePurchaseHuaweiRequest) (*api.ValidatePurchaseHuaweiRequest, error, codes.Code) {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		result, fnErr := fn(ctx, ri.logger, ri.db, ri.nk, in)
+		if fnErr != nil {
+			if runtimeErr, ok := fnErr.(*runtime.Error); ok {
+				if runtimeErr.Code <= 0 || runtimeErr.Code >= 17 {
+					// If error is present but code is invalid then default to 13 (Internal) as the error code.
+					return result, runtimeErr, codes.Internal
+				}
+				return result, runtimeErr, codes.Code(runtimeErr.Code)
+			}
+			// Not a runtime error that contains a code.
+			return result, fnErr, codes.Internal
+		}
+		return result, nil, codes.OK
+	}
+	return nil
+}
+
+func (ri *RuntimeGoInitializer) RegisterAfterValidatePurchaseHuawei(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseHuaweiRequest) error) error {
+	ri.afterReq.afterValidatePurchaseHuaweiFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, out *api.ValidatePurchaseResponse, in *api.ValidatePurchaseHuaweiRequest) error {
+		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeAfter, nil, expiry, userID, username, vars, "", clientIP, clientPort)
+		return fn(ctx, ri.logger, ri.db, ri.nk, out, in)
+	}
+	return nil
+}
+
 func (ri *RuntimeGoInitializer) RegisterBeforeEvent(fn func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, in *api.Event) (*api.Event, error)) error {
 	ri.beforeReq.beforeEventFunction = func(ctx context.Context, logger *zap.Logger, userID, username string, vars map[string]string, expiry int64, clientIP, clientPort string, in *api.Event) (*api.Event, error, codes.Code) {
 		ctx = NewRuntimeGoContext(ctx, ri.node, ri.env, RuntimeExecutionModeBefore, nil, expiry, userID, username, vars, "", clientIP, clientPort)
@@ -1899,32 +2179,15 @@ func (ri *RuntimeGoInitializer) RegisterMatch(name string, fn func(ctx context.C
 	return nil
 }
 
-func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbMarshaler *jsonpb.Marshaler, config Config, socialClient *social.Client, leaderboardCache LeaderboardCache, leaderboardRankCache LeaderboardRankCache, leaderboardScheduler LeaderboardScheduler, sessionRegistry SessionRegistry, matchRegistry MatchRegistry, tracker Tracker, streamManager StreamManager, router MessageRouter, rootPath string, paths []string, eventQueue *RuntimeEventQueue) ([]string, map[string]RuntimeRpcFunction, map[string]RuntimeBeforeRtFunction, map[string]RuntimeAfterRtFunction, *RuntimeBeforeReqFunctions, *RuntimeAfterReqFunctions, RuntimeMatchmakerMatchedFunction, RuntimeMatchCreateFunction, RuntimeTournamentEndFunction, RuntimeTournamentResetFunction, RuntimeLeaderboardResetFunction, *RuntimeEventFunctions, func(RuntimeMatchCreateFunction), func() []string, error) {
+func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, protojsonMarshaler *protojson.MarshalOptions, config Config, socialClient *social.Client, leaderboardCache LeaderboardCache, leaderboardRankCache LeaderboardRankCache, leaderboardScheduler LeaderboardScheduler, sessionRegistry SessionRegistry, sessionCache SessionCache, matchRegistry MatchRegistry, tracker Tracker, streamManager StreamManager, router MessageRouter, rootPath string, paths []string, eventQueue *RuntimeEventQueue, matchProvider *MatchProvider) ([]string, map[string]RuntimeRpcFunction, map[string]RuntimeBeforeRtFunction, map[string]RuntimeAfterRtFunction, *RuntimeBeforeReqFunctions, *RuntimeAfterReqFunctions, RuntimeMatchmakerMatchedFunction, RuntimeTournamentEndFunction, RuntimeTournamentResetFunction, RuntimeLeaderboardResetFunction, *RuntimeEventFunctions, func() []string, error) {
 	runtimeLogger := NewRuntimeGoLogger(logger)
 	node := config.GetName()
 	env := config.GetRuntime().Environment
-	nk := NewRuntimeGoNakamaModule(logger, db, jsonpbMarshaler, config, socialClient, leaderboardCache, leaderboardRankCache, leaderboardScheduler, sessionRegistry, matchRegistry, tracker, streamManager, router)
+	nk := NewRuntimeGoNakamaModule(logger, db, protojsonMarshaler, config, socialClient, leaderboardCache, leaderboardRankCache, leaderboardScheduler, sessionRegistry, sessionCache, matchRegistry, tracker, streamManager, router)
 
 	match := make(map[string]func(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule) (runtime.Match, error), 0)
+
 	matchLock := &sync.RWMutex{}
-	matchCreateFn := func(ctx context.Context, logger *zap.Logger, id uuid.UUID, node string, stopped *atomic.Bool, name string) (RuntimeMatchCore, error) {
-		matchLock.RLock()
-		fn, ok := match[name]
-		matchLock.RUnlock()
-		if !ok {
-			// Not a Go match.
-			return nil, nil
-		}
-
-		ctx = NewRuntimeGoContext(ctx, node, env, RuntimeExecutionModeMatchCreate, nil, 0, "", "", nil, "", "", "")
-		match, err := fn(ctx, runtimeLogger, db, nk)
-		if err != nil {
-			return nil, err
-		}
-
-		return NewRuntimeGoMatchCore(logger, matchRegistry, router, id, node, stopped, db, env, nk, match)
-	}
-	nk.SetMatchCreateFn(matchCreateFn)
 	matchNamesListFn := func() []string {
 		matchLock.RLock()
 		matchNames := make([]string, 0, len(match))
@@ -1934,6 +2197,27 @@ func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbM
 		matchLock.RUnlock()
 		return matchNames
 	}
+
+	matchProvider.RegisterCreateFn("go",
+		func(ctx context.Context, logger *zap.Logger, id uuid.UUID, node string, stopped *atomic.Bool, name string) (RuntimeMatchCore, error) {
+			matchLock.RLock()
+			fn, ok := match[name]
+			matchLock.RUnlock()
+
+			if !ok {
+				// Not a Go match.
+				return nil, nil
+			}
+
+			ctx = NewRuntimeGoContext(ctx, node, env, RuntimeExecutionModeMatchCreate, nil, 0, "", "", nil, "", "", "")
+			match, err := fn(ctx, runtimeLogger, db, nk)
+			if err != nil {
+				return nil, err
+			}
+
+			return NewRuntimeGoMatchCore(logger, name, matchRegistry, router, id, node, stopped, db, env, nk, match)
+		})
+	nk.matchCreateFn = matchProvider.CreateMatch
 
 	initializer := &RuntimeGoInitializer{
 		logger: runtimeLogger,
@@ -1974,13 +2258,13 @@ func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbM
 		relPath, name, fn, err := openGoModule(startupLogger, rootPath, path)
 		if err != nil {
 			// Errors are already logged in the function above.
-			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, err
 		}
 
 		// Run the initialisation.
 		if err = fn(ctx, runtimeLogger, db, nk, initializer); err != nil {
 			startupLogger.Fatal("Error returned by InitModule function in Go module", zap.String("name", name), zap.Error(err))
-			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, errors.New("error returned by InitModule function in Go module")
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, errors.New("error returned by InitModule function in Go module")
 		}
 		modulePaths = append(modulePaths, relPath)
 	}
@@ -2003,7 +2287,7 @@ func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbM
 			ctx := NewRuntimeGoContext(context.Background(), initializer.node, initializer.env, RuntimeExecutionModeEvent, nil, expiry, userID, username, vars, sessionID, clientIP, clientPort)
 			evt := &api.Event{
 				Name:      "session_start",
-				Timestamp: &timestamp.Timestamp{Seconds: evtTimeSec},
+				Timestamp: &timestamppb.Timestamp{Seconds: evtTimeSec},
 			}
 			eventQueue.Queue(func() {
 				for _, fn := range initializer.sessionStartFunctions {
@@ -2018,7 +2302,7 @@ func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbM
 			evt := &api.Event{
 				Name:       "session_end",
 				Properties: map[string]string{"reason": reason},
-				Timestamp:  &timestamp.Timestamp{Seconds: evtTimeSec},
+				Timestamp:  &timestamppb.Timestamp{Seconds: evtTimeSec},
 			}
 			eventQueue.Queue(func() {
 				for _, fn := range initializer.sessionEndFunctions {
@@ -2028,7 +2312,7 @@ func NewRuntimeProviderGo(logger, startupLogger *zap.Logger, db *sql.DB, jsonpbM
 		}
 	}
 
-	return modulePaths, initializer.rpc, initializer.beforeRt, initializer.afterRt, initializer.beforeReq, initializer.afterReq, initializer.matchmakerMatched, matchCreateFn, initializer.tournamentEnd, initializer.tournamentReset, initializer.leaderboardReset, events, nk.SetMatchCreateFn, matchNamesListFn, nil
+	return modulePaths, initializer.rpc, initializer.beforeRt, initializer.afterRt, initializer.beforeReq, initializer.afterReq, initializer.matchmakerMatched, initializer.tournamentEnd, initializer.tournamentReset, initializer.leaderboardReset, events, matchNamesListFn, nil
 }
 
 func CheckRuntimeProviderGo(logger *zap.Logger, rootPath string, paths []string) error {

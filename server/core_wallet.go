@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/heroiclabs/nakama-common/runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,19 +42,19 @@ type walletLedgerListCursor struct {
 	Id         string
 }
 
-// Not an API entity, only used to receive data from Lua environment.
+// Not an API entity, only used to receive data from runtime environment.
 type walletUpdate struct {
 	UserID    uuid.UUID
-	Changeset map[string]interface{}
+	Changeset map[string]int64
 	// Metadata is expected to be a valid JSON string already.
 	Metadata string
 }
 
-// Not an API entity, only used to send data to Lua environment.
+// Not an API entity, only used to send data to runtime environment.
 type walletLedger struct {
 	ID         string
 	UserID     string
-	Changeset  map[string]interface{}
+	Changeset  map[string]int64
 	Metadata   map[string]interface{}
 	CreateTime int64
 	UpdateTime int64
@@ -75,7 +76,7 @@ func (w *walletLedger) GetUpdateTime() int64 {
 	return w.UpdateTime
 }
 
-func (w *walletLedger) GetChangeset() map[string]interface{} {
+func (w *walletLedger) GetChangeset() map[string]int64 {
 	return w.Changeset
 }
 
@@ -83,9 +84,42 @@ func (w *walletLedger) GetMetadata() map[string]interface{} {
 	return w.Metadata
 }
 
-func UpdateWallets(ctx context.Context, logger *zap.Logger, db *sql.DB, updates []*walletUpdate, updateLedger bool) error {
+func UpdateWallets(ctx context.Context, logger *zap.Logger, db *sql.DB, updates []*walletUpdate, updateLedger bool) ([]*runtime.WalletUpdateResult, error) {
 	if len(updates) == 0 {
+		return nil, nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Error("Could not begin database transaction.", zap.Error(err))
+		return nil, err
+	}
+
+	var results []*runtime.WalletUpdateResult
+	if err = ExecuteInTx(ctx, tx, func() error {
+		var updateErr error
+		results, updateErr = updateWallets(ctx, logger, tx, updates, updateLedger)
+		if updateErr != nil {
+			return updateErr
+		}
 		return nil
+	}); err != nil {
+		if _, ok := err.(*runtime.WalletNegativeError); !ok {
+			logger.Error("Error updating wallets.", zap.Error(err))
+		}
+		// Ensure there are no partially updated wallets returned as results, they would not be reflected in database anyway.
+		for _, result := range results {
+			result.Updated = nil
+		}
+		return results, err
+	}
+
+	return results, nil
+}
+
+func updateWallets(ctx context.Context, logger *zap.Logger, tx *sql.Tx, updates []*walletUpdate, updateLedger bool) ([]*runtime.WalletUpdateResult, error) {
+	if len(updates) == 0 {
+		return nil, nil
 	}
 
 	initialParams := make([]interface{}, 0, len(updates))
@@ -97,119 +131,132 @@ func UpdateWallets(ctx context.Context, logger *zap.Logger, db *sql.DB, updates 
 
 	initialQuery := "SELECT id, wallet FROM users WHERE id IN (" + strings.Join(initialStatements, ",") + ")"
 
-	tx, err := db.BeginTx(ctx, nil)
+	// Select the wallets from the DB and decode them.
+	wallets := make(map[string]map[string]int64, len(updates))
+	rows, err := tx.QueryContext(ctx, initialQuery, initialParams...)
 	if err != nil {
-		logger.Error("Could not begin database transaction.", zap.Error(err))
-		return err
+		logger.Debug("Error retrieving user wallets.", zap.Error(err))
+		return nil, err
+	}
+	for rows.Next() {
+		var id string
+		var wallet sql.NullString
+		err = rows.Scan(&id, &wallet)
+		if err != nil {
+			_ = rows.Close()
+			logger.Debug("Error reading user wallets.", zap.Error(err))
+			return nil, err
+		}
+
+		var walletMap map[string]int64
+		err = json.Unmarshal([]byte(wallet.String), &walletMap)
+		if err != nil {
+			_ = rows.Close()
+			logger.Debug("Error converting user wallet.", zap.String("user_id", id), zap.Error(err))
+			return nil, err
+		}
+
+		wallets[id] = walletMap
+	}
+	_ = rows.Close()
+
+	results := make([]*runtime.WalletUpdateResult, 0, len(updates))
+
+	// Prepare the set of wallet updates and ledger updates.
+	updatedWallets := make(map[string][]byte, len(updates))
+	updateOrder := make([]string, 0, len(updates))
+	var statements []string
+	var params []interface{}
+	if updateLedger {
+		statements = make([]string, 0, len(updates))
+		params = make([]interface{}, 0, len(updates)*4)
 	}
 
-	if err = ExecuteInTx(ctx, tx, func() error {
-		// Select the wallets from the DB and decode them.
-		wallets := make(map[string]map[string]interface{}, len(updates))
-		rows, err := tx.QueryContext(ctx, initialQuery, initialParams...)
+	// Go through the changesets and attempt to calculate the new state for each wallet.
+	for _, update := range updates {
+		userID := update.UserID.String()
+		walletMap, ok := wallets[userID]
+		if !ok {
+			// Wallet update for a user that does not exist. Skip it.
+			continue
+		}
+
+		// Deep copy the previous state of the wallet.
+		previousMap := make(map[string]int64, len(walletMap))
+		for k, v := range walletMap {
+			previousMap[k] = v
+		}
+		result := &runtime.WalletUpdateResult{UserID: userID, Previous: previousMap}
+
+		for k, v := range update.Changeset {
+			// Existing value may be 0 or missing.
+			newValue := walletMap[k] + v
+			if newValue < 0 {
+				// Insufficient funds
+				return nil, &runtime.WalletNegativeError{
+					UserID:  userID,
+					Path:    k,
+					Current: walletMap[k],
+					Amount:  v,
+				}
+			}
+			walletMap[k] = newValue
+		}
+
+		result.Updated = walletMap
+		results = append(results, result)
+
+		walletData, err := json.Marshal(walletMap)
 		if err != nil {
-			logger.Debug("Error retrieving user wallets.", zap.Error(err))
-			return err
+			logger.Debug("Error converting new user wallet.", zap.String("user_id", userID), zap.Error(err))
+			return nil, err
 		}
-		for rows.Next() {
-			var id string
-			var wallet sql.NullString
-			err = rows.Scan(&id, &wallet)
-			if err != nil {
-				_ = rows.Close()
-				logger.Debug("Error reading user wallets.", zap.Error(err))
-				return err
-			}
+		updatedWallets[userID] = walletData
+		updateOrder = append(updateOrder, userID)
 
-			var walletMap map[string]interface{}
-			err = json.Unmarshal([]byte(wallet.String), &walletMap)
-			if err != nil {
-				_ = rows.Close()
-				logger.Debug("Error converting user wallet.", zap.String("user_id", id), zap.Error(err))
-				return err
-			}
-
-			wallets[id] = walletMap
-		}
-		_ = rows.Close()
-
-		// Prepare the set of wallet updates and ledger updates.
-		updatedWallets := make(map[string][]byte, len(updates))
-		updateOrder := make([]string, 0, len(updates))
-		var statements []string
-		var params []interface{}
+		// Prepare ledger updates if needed.
 		if updateLedger {
-			statements = make([]string, 0, len(updates))
-			params = make([]interface{}, 0, len(updates)*4)
+			changesetData, err := json.Marshal(update.Changeset)
+			if err != nil {
+				logger.Debug("Error converting new user wallet changeset.", zap.String("user_id", update.UserID.String()), zap.Error(err))
+				return nil, err
+			}
+
+			params = append(params, uuid.Must(uuid.NewV4()), userID, changesetData, update.Metadata)
+			statements = append(statements, fmt.Sprintf("($%v::UUID, $%v, $%v, $%v)", strconv.Itoa(len(params)-3), strconv.Itoa(len(params)-2), strconv.Itoa(len(params)-1), strconv.Itoa(len(params))))
 		}
-		for _, update := range updates {
-			userID := update.UserID.String()
-			walletMap, ok := wallets[userID]
+	}
+
+	if len(updatedWallets) > 0 {
+		// Ensure updates are done in natural order of user ID.
+		sort.Strings(updateOrder)
+
+		// Write the updated wallets.
+		for _, userID := range updateOrder {
+			updatedWallet, ok := updatedWallets[userID]
 			if !ok {
-				// Wallet update for a user that does not exist. Skip it.
+				// Should not happen.
+				logger.Warn("Missing wallet update for user.", zap.String("user_id", userID))
 				continue
 			}
-			walletMap, err = applyWalletUpdate(walletMap, update.Changeset, "")
+			_, err = tx.ExecContext(ctx, "UPDATE users SET update_time = now(), wallet = $2 WHERE id = $1", userID, updatedWallet)
 			if err != nil {
-				// Programmer error, no need to log.
-				return err
-			}
-			walletData, err := json.Marshal(walletMap)
-			if err != nil {
-				logger.Debug("Error converting new user wallet.", zap.String("user_id", userID), zap.Error(err))
-				return err
-			}
-			updatedWallets[userID] = walletData
-			updateOrder = append(updateOrder, userID)
-
-			// Prepare ledger updates if needed.
-			if updateLedger {
-				changesetData, err := json.Marshal(update.Changeset)
-				if err != nil {
-					logger.Debug("Error converting new user wallet changeset.", zap.String("user_id", update.UserID.String()), zap.Error(err))
-					return err
-				}
-
-				params = append(params, uuid.Must(uuid.NewV4()), userID, changesetData, update.Metadata)
-				statements = append(statements, fmt.Sprintf("($%v::UUID, $%v, $%v, $%v)", strconv.Itoa(len(params)-3), strconv.Itoa(len(params)-2), strconv.Itoa(len(params)-1), strconv.Itoa(len(params))))
+				logger.Debug("Error writing user wallet.", zap.String("user_id", userID), zap.Error(err))
+				return nil, err
 			}
 		}
 
-		if len(updatedWallets) > 0 {
-			// Ensure updates are done in natural order of user ID.
-			sort.Strings(updateOrder)
-
-			// Write the updated wallets.
-			for _, userID := range updateOrder {
-				updatedWallet, ok := updatedWallets[userID]
-				if !ok {
-					// Should not happen.
-					logger.Warn("Missing wallet update for user.", zap.String("user_id", userID))
-					continue
-				}
-				_, err = tx.ExecContext(ctx, "UPDATE users SET update_time = now(), wallet = $2 WHERE id = $1", userID, updatedWallet)
-				if err != nil {
-					logger.Debug("Error writing user wallet.", zap.String("user_id", userID), zap.Error(err))
-					return err
-				}
-			}
-
-			// Write the ledger updates, if any.
-			if updateLedger && (len(statements) > 0) {
-				_, err = tx.ExecContext(ctx, "INSERT INTO wallet_ledger (id, user_id, changeset, metadata) VALUES "+strings.Join(statements, ", "), params...)
-				if err != nil {
-					logger.Debug("Error writing user wallet ledgers.", zap.Error(err))
-					return err
-				}
+		// Write the ledger updates, if any.
+		if updateLedger && (len(statements) > 0) {
+			_, err = tx.ExecContext(ctx, "INSERT INTO wallet_ledger (id, user_id, changeset, metadata) VALUES "+strings.Join(statements, ", "), params...)
+			if err != nil {
+				logger.Debug("Error writing user wallet ledgers.", zap.Error(err))
+				return nil, err
 			}
 		}
-		return nil
-	}); err != nil {
-		logger.Error("Error updating wallets.", zap.Error(err))
-		return err
 	}
 
-	return nil
+	return results, nil
 }
 
 func UpdateWalletLedger(ctx context.Context, logger *zap.Logger, db *sql.DB, id uuid.UUID, metadata string) (*walletLedger, error) {
@@ -225,7 +272,7 @@ func UpdateWalletLedger(ctx context.Context, logger *zap.Logger, db *sql.DB, id 
 		return nil, err
 	}
 
-	var changesetMap map[string]interface{}
+	var changesetMap map[string]int64
 	err = json.Unmarshal([]byte(changeset.String), &changesetMap)
 	if err != nil {
 		logger.Error("Error converting user wallet ledger changeset after update.", zap.String("id", id.String()), zap.Error(err))
@@ -259,7 +306,7 @@ func ListWalletLedger(ctx context.Context, logger *zap.Logger, db *sql.DB, userI
 	}
 
 	var outgoingCursor *walletLedgerListCursor
-	results := make([]*walletLedger, 0)
+	results := make([]*walletLedger, 0, 10)
 	params := []interface{}{userID}
 	query := "SELECT id, changeset, metadata, create_time, update_time FROM wallet_ledger WHERE user_id = $1::UUID"
 	if incomingCursor != nil {
@@ -301,7 +348,7 @@ func ListWalletLedger(ctx context.Context, logger *zap.Logger, db *sql.DB, userI
 			return nil, "", err
 		}
 
-		var changesetMap map[string]interface{}
+		var changesetMap map[string]int64
 		err = json.Unmarshal([]byte(changeset.String), &changesetMap)
 		if err != nil {
 			logger.Error("Error converting user wallet ledger changeset.", zap.String("user_id", userID.String()), zap.Error(err))
@@ -335,77 +382,4 @@ func ListWalletLedger(ctx context.Context, logger *zap.Logger, db *sql.DB, userI
 	}
 
 	return results, outgoingCursorStr, nil
-}
-
-func applyWalletUpdate(wallet map[string]interface{}, changeset map[string]interface{}, path string) (map[string]interface{}, error) {
-	for k, v := range changeset {
-		var currentPath string
-		if path == "" {
-			currentPath = k
-		} else {
-			currentPath = fmt.Sprintf("%v.%v", path, k)
-		}
-
-		if existing, ok := wallet[k]; ok {
-			// There is already a value present for this field.
-			if existingMap, ok := existing.(map[string]interface{}); ok {
-				// Ensure they're both maps of other values.
-				if changesetMap, ok := v.(map[string]interface{}); ok {
-					// Recurse to apply changes.
-					updated, err := applyWalletUpdate(existingMap, changesetMap, currentPath)
-					if err != nil {
-						return nil, err
-					}
-					wallet[k] = updated
-				} else {
-					return nil, fmt.Errorf("update changeset does not match existing wallet value map type at path '%v'", currentPath)
-				}
-			} else if existingValue, ok := existing.(float64); ok {
-				// Ensure they're both numeric values.
-				if changesetValue, ok := v.(float64); ok {
-					newValue := existingValue + changesetValue
-					if newValue < 0 {
-						return nil, fmt.Errorf("wallet update rejected negative value at path '%v'", currentPath)
-					}
-					wallet[k] = newValue
-				} else if changesetValue, ok := v.(int64); ok {
-					newValue := existingValue + float64(changesetValue)
-					if newValue < 0 {
-						return nil, fmt.Errorf("wallet update rejected negative value at path '%v'", currentPath)
-					}
-					wallet[k] = newValue
-				} else {
-					return nil, fmt.Errorf("update changeset does not match existing wallet value number type at path '%v'", currentPath)
-				}
-			} else {
-				// Existing value is not a map or float.
-				return nil, fmt.Errorf("unknown existing wallet value type at path '%v', expecting map or float64", currentPath)
-			}
-		} else {
-			// No existing value for this field.
-			if changesetMap, ok := v.(map[string]interface{}); ok {
-				updated, err := applyWalletUpdate(make(map[string]interface{}, 1), changesetMap, currentPath)
-				if err != nil {
-					return nil, err
-				}
-				wallet[k] = updated
-			} else if changesetValue, ok := v.(float64); ok {
-				if changesetValue < 0 {
-					// Do not allow setting negative initial values.
-					return nil, fmt.Errorf("wallet update rejected negative value at path '%v'", currentPath)
-				}
-				wallet[k] = changesetValue
-			} else if changesetValue, ok := v.(int64); ok {
-				if changesetValue < 0 {
-					// Do not allow setting negative initial values.
-					return nil, fmt.Errorf("wallet update rejected negative value at path '%v'", currentPath)
-				}
-				wallet[k] = float64(changesetValue)
-			} else {
-				// Incoming value is not a map or float.
-				return nil, fmt.Errorf("unknown update changeset value type at path '%v', expecting map or float64", currentPath)
-			}
-		}
-	}
-	return wallet, nil
 }

@@ -23,12 +23,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jackc/pgx"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"sort"
 
 	"context"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/jackc/pgx/pgtype"
 	"go.uber.org/zap"
@@ -38,7 +38,6 @@ import (
 var (
 	ErrStorageRejectedVersion    = errors.New("Storage write rejected - version check failed.")
 	ErrStorageRejectedPermission = errors.New("Storage write rejected - permission denied.")
-	ErrStorageWriteFailed        = errors.New("Storage write failed.")
 )
 
 type storageCursor struct {
@@ -310,9 +309,9 @@ WHERE user_id = $1`
 		}
 		defer rows.Close()
 
-		funcObjects := make([]*api.StorageObject, 0)
+		funcObjects := make([]*api.StorageObject, 0, 10)
 		for rows.Next() {
-			o := &api.StorageObject{CreateTime: &timestamp.Timestamp{}, UpdateTime: &timestamp.Timestamp{}}
+			o := &api.StorageObject{CreateTime: &timestamppb.Timestamp{}, UpdateTime: &timestamppb.Timestamp{}}
 			var createTime pgtype.Timestamptz
 			var updateTime pgtype.Timestamptz
 
@@ -355,7 +354,7 @@ func storageListObjects(rows *sql.Rows, limit int) (*api.StorageObjectList, erro
 		}
 
 		// There is still room for more objects, read the next one.
-		o := &api.StorageObject{CreateTime: &timestamp.Timestamp{}, UpdateTime: &timestamp.Timestamp{}}
+		o := &api.StorageObject{CreateTime: &timestamppb.Timestamp{}, UpdateTime: &timestamppb.Timestamp{}}
 		var createTime pgtype.Timestamptz
 		var updateTime pgtype.Timestamptz
 
@@ -392,7 +391,7 @@ func storageListObjects(rows *sql.Rows, limit int) (*api.StorageObjectList, erro
 }
 
 func StorageReadObjects(ctx context.Context, logger *zap.Logger, db *sql.DB, caller uuid.UUID, objectIDs []*api.ReadStorageObjectId) (*api.StorageObjects, error) {
-	params := make([]interface{}, 0)
+	params := make([]interface{}, 0, len(objectIDs)*3)
 
 	whereClause := ""
 	for _, id := range objectIDs {
@@ -437,9 +436,9 @@ WHERE
 		}
 		defer rows.Close()
 
-		funcObjects := &api.StorageObjects{Objects: make([]*api.StorageObject, 0)}
+		funcObjects := &api.StorageObjects{Objects: make([]*api.StorageObject, 0, len(objectIDs))}
 		for rows.Next() {
-			o := &api.StorageObject{CreateTime: &timestamp.Timestamp{}, UpdateTime: &timestamp.Timestamp{}}
+			o := &api.StorageObject{CreateTime: &timestamppb.Timestamp{}, UpdateTime: &timestamppb.Timestamp{}}
 			var createTime pgtype.Timestamptz
 			var updateTime pgtype.Timestamptz
 
@@ -477,20 +476,10 @@ func StorageWriteObjects(ctx context.Context, logger *zap.Logger, db *sql.DB, au
 
 	if err = ExecuteInTx(ctx, tx, func() error {
 		// If the transaction is retried ensure we wipe any acks that may have been prepared by previous attempts.
-		acks = make([]*api.StorageObjectAck, 0, ops.Len())
-
-		for _, op := range ops {
-			ack, writeErr := storageWriteObject(ctx, logger, tx, authoritativeWrite, op.OwnerID, op.Object)
-			if writeErr != nil {
-				if writeErr == ErrStorageRejectedVersion || writeErr == ErrStorageRejectedPermission {
-					return StatusError(codes.InvalidArgument, "Storage write rejected.", writeErr)
-				}
-
-				logger.Debug("Error writing storage objects.", zap.Error(err))
-				return writeErr
-			}
-
-			acks = append(acks, ack)
+		var writeErr error
+		acks, writeErr = storageWriteObjects(ctx, logger, tx, authoritativeWrite, ops)
+		if writeErr != nil {
+			return writeErr
 		}
 		return nil
 	}); err != nil {
@@ -502,6 +491,24 @@ func StorageWriteObjects(ctx context.Context, logger *zap.Logger, db *sql.DB, au
 	}
 
 	return &api.StorageObjectAcks{Acks: acks}, codes.OK, nil
+}
+
+func storageWriteObjects(ctx context.Context, logger *zap.Logger, tx *sql.Tx, authoritativeWrite bool, ops StorageOpWrites) ([]*api.StorageObjectAck, error) {
+	acks := make([]*api.StorageObjectAck, 0, ops.Len())
+
+	for _, op := range ops {
+		ack, writeErr := storageWriteObject(ctx, logger, tx, authoritativeWrite, op.OwnerID, op.Object)
+		if writeErr != nil {
+			if writeErr == ErrStorageRejectedVersion || writeErr == ErrStorageRejectedPermission {
+				return nil, StatusError(codes.InvalidArgument, "Storage write rejected.", writeErr)
+			}
+
+			logger.Debug("Error writing storage objects.", zap.Error(writeErr))
+			return nil, writeErr
+		}
+		acks = append(acks, ack)
+	}
+	return acks, nil
 }
 
 func storageWriteObject(ctx context.Context, logger *zap.Logger, tx *sql.Tx, authoritativeWrite bool, ownerID string, object *api.WriteStorageObject) (*api.StorageObjectAck, error) {

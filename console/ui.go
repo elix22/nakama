@@ -15,9 +15,20 @@
 package console
 
 import (
+	"embed"
+	"io/fs"
 	"net/http"
-
-	"github.com/gobuffalo/packr"
+	"path"
 )
 
-var UI = http.FileServer(packr.NewBox("./ui/build")) // path must be string not a variable for packr to understand
+//go:embed ui/dist/*
+var embedFS embed.FS
+var UIFS = &uiFS{}
+
+type uiFS struct{}
+
+func (fs *uiFS) Open(name string) (fs.File, error) {
+	return embedFS.Open(path.Join("ui", "dist", name))
+}
+
+var UI = http.FileServer(http.FS(UIFS))

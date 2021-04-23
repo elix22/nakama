@@ -20,40 +20,44 @@ import (
 
 	"strings"
 
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/heroiclabs/nakama-common/rtapi"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type Pipeline struct {
-	logger            *zap.Logger
-	config            Config
-	db                *sql.DB
-	jsonpbMarshaler   *jsonpb.Marshaler
-	jsonpbUnmarshaler *jsonpb.Unmarshaler
-	sessionRegistry   SessionRegistry
-	matchRegistry     MatchRegistry
-	matchmaker        Matchmaker
-	tracker           Tracker
-	router            MessageRouter
-	runtime           *Runtime
-	node              string
+	logger               *zap.Logger
+	config               Config
+	db                   *sql.DB
+	protojsonMarshaler   *protojson.MarshalOptions
+	protojsonUnmarshaler *protojson.UnmarshalOptions
+	sessionRegistry      SessionRegistry
+	statusRegistry       *StatusRegistry
+	matchRegistry        MatchRegistry
+	partyRegistry        PartyRegistry
+	matchmaker           Matchmaker
+	tracker              Tracker
+	router               MessageRouter
+	runtime              *Runtime
+	node                 string
 }
 
-func NewPipeline(logger *zap.Logger, config Config, db *sql.DB, jsonpbMarshaler *jsonpb.Marshaler, jsonpbUnmarshaler *jsonpb.Unmarshaler, sessionRegistry SessionRegistry, matchRegistry MatchRegistry, matchmaker Matchmaker, tracker Tracker, router MessageRouter, runtime *Runtime) *Pipeline {
+func NewPipeline(logger *zap.Logger, config Config, db *sql.DB, protojsonMarshaler *protojson.MarshalOptions, protojsonUnmarshaler *protojson.UnmarshalOptions, sessionRegistry SessionRegistry, statusRegistry *StatusRegistry, matchRegistry MatchRegistry, partyRegistry PartyRegistry, matchmaker Matchmaker, tracker Tracker, router MessageRouter, runtime *Runtime) *Pipeline {
 	return &Pipeline{
-		logger:            logger,
-		config:            config,
-		db:                db,
-		jsonpbMarshaler:   jsonpbMarshaler,
-		jsonpbUnmarshaler: jsonpbUnmarshaler,
-		sessionRegistry:   sessionRegistry,
-		matchRegistry:     matchRegistry,
-		matchmaker:        matchmaker,
-		tracker:           tracker,
-		router:            router,
-		runtime:           runtime,
-		node:              config.GetName(),
+		logger:               logger,
+		config:               config,
+		db:                   db,
+		protojsonMarshaler:   protojsonMarshaler,
+		protojsonUnmarshaler: protojsonUnmarshaler,
+		sessionRegistry:      sessionRegistry,
+		statusRegistry:       statusRegistry,
+		matchRegistry:        matchRegistry,
+		partyRegistry:        partyRegistry,
+		matchmaker:           matchmaker,
+		tracker:              tracker,
+		router:               router,
+		runtime:              runtime,
+		node:                 config.GetName(),
 	}
 }
 
@@ -107,6 +111,28 @@ func (p *Pipeline) ProcessRequest(logger *zap.Logger, session Session, envelope 
 		pipelineFn = p.statusUnfollow
 	case *rtapi.Envelope_StatusUpdate:
 		pipelineFn = p.statusUpdate
+	case *rtapi.Envelope_PartyCreate:
+		pipelineFn = p.partyCreate
+	case *rtapi.Envelope_PartyJoin:
+		pipelineFn = p.partyJoin
+	case *rtapi.Envelope_PartyLeave:
+		pipelineFn = p.partyLeave
+	case *rtapi.Envelope_PartyPromote:
+		pipelineFn = p.partyPromote
+	case *rtapi.Envelope_PartyAccept:
+		pipelineFn = p.partyAccept
+	case *rtapi.Envelope_PartyRemove:
+		pipelineFn = p.partyRemove
+	case *rtapi.Envelope_PartyClose:
+		pipelineFn = p.partyClose
+	case *rtapi.Envelope_PartyJoinRequestList:
+		pipelineFn = p.partyJoinRequestList
+	case *rtapi.Envelope_PartyMatchmakerAdd:
+		pipelineFn = p.partyMatchmakerAdd
+	case *rtapi.Envelope_PartyMatchmakerRemove:
+		pipelineFn = p.partyMatchmakerRemove
+	case *rtapi.Envelope_PartyDataSend:
+		pipelineFn = p.partyDataSend
 	default:
 		// If we reached this point the envelope was valid but the contents are missing or unknown.
 		// Usually caused by a version mismatch, and should cause the session making this pipeline request to close.
@@ -138,7 +164,7 @@ func (p *Pipeline) ProcessRequest(logger *zap.Logger, session Session, envelope 
 				}}}, true)
 				return true
 			} else if hookResult == nil {
-				// if result is nil, requested resource is disabled. Sessions calling disabled resources will be close.
+				// If result is nil, requested resource is disabled. Sessions calling disabled resources will be closed.
 				logger.Warn("Intercepted a disabled resource.", zap.String("resource", messageName))
 				session.Send(&rtapi.Envelope{Cid: envelope.Cid, Message: &rtapi.Envelope_Error{Error: &rtapi.Error{
 					Code:    int32(rtapi.Error_UNRECOGNIZED_PAYLOAD),

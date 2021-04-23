@@ -18,7 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/gofrs/uuid"
-	"github.com/heroiclabs/nakama/v2/social"
+	"github.com/heroiclabs/nakama/v3/social"
 	"github.com/jackc/pgx"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -27,6 +27,42 @@ import (
 	"strconv"
 	"strings"
 )
+
+func LinkApple(ctx context.Context, logger *zap.Logger, db *sql.DB, config Config, socialClient *social.Client, userID uuid.UUID, token string) error {
+	if config.GetSocial().Apple.BundleId == "" {
+		return status.Error(codes.FailedPrecondition, "Apple authentication is not configured.")
+	}
+
+	if token == "" {
+		return status.Error(codes.InvalidArgument, "Apple ID token is required.")
+	}
+
+	profile, err := socialClient.CheckAppleToken(ctx, config.GetSocial().Apple.BundleId, token)
+	if err != nil {
+		logger.Info("Could not authenticate Apple profile.", zap.Error(err))
+		return status.Error(codes.Unauthenticated, "Could not authenticate Apple profile.")
+	}
+
+	res, err := db.ExecContext(ctx, `
+UPDATE users
+SET apple_id = $2, update_time = now()
+WHERE (id = $1)
+AND (NOT EXISTS
+    (SELECT id
+     FROM users
+     WHERE apple_id = $2 AND NOT id = $1))`,
+		userID,
+		profile.ID)
+
+	if err != nil {
+		logger.Error("Could not link Apple ID.", zap.Error(err), zap.Any("input", token))
+		return status.Error(codes.Internal, "Error while trying to link Apple ID.")
+	} else if count, _ := res.RowsAffected(); count == 0 {
+		return status.Error(codes.AlreadyExists, "Apple ID is already in use.")
+	}
+
+	return nil
+}
 
 func LinkCustom(ctx context.Context, logger *zap.Logger, db *sql.DB, userID uuid.UUID, customID string) error {
 	if customID == "" {
@@ -146,15 +182,23 @@ AND (NOT EXISTS
 	return nil
 }
 
-func LinkFacebook(ctx context.Context, logger *zap.Logger, db *sql.DB, socialClient *social.Client, router MessageRouter, userID uuid.UUID, username, token string, sync bool) error {
+func LinkFacebook(ctx context.Context, logger *zap.Logger, db *sql.DB, socialClient *social.Client, router MessageRouter, userID uuid.UUID, username, appId, token string, sync bool) error {
 	if token == "" {
 		return status.Error(codes.InvalidArgument, "Facebook access token is required.")
 	}
 
-	facebookProfile, err := socialClient.GetFacebookProfile(ctx, token)
+	var facebookProfile *social.FacebookProfile
+	var err error
+	var importFriendsPossible bool
+
+	facebookProfile, err = socialClient.CheckFacebookLimitedLoginToken(ctx, appId, token)
 	if err != nil {
-		logger.Info("Could not authenticate Facebook profile.", zap.Error(err))
-		return status.Error(codes.Unauthenticated, "Could not authenticate Facebook profile.")
+		facebookProfile, err = socialClient.GetFacebookProfile(ctx, token)
+		if err != nil {
+			logger.Info("Could not authenticate Facebook profile.", zap.Error(err))
+			return status.Error(codes.Unauthenticated, "Could not authenticate Facebook profile.")
+		}
+		importFriendsPossible = true
 	}
 
 	res, err := db.ExecContext(ctx, `
@@ -176,7 +220,7 @@ AND (NOT EXISTS
 	}
 
 	// Import friends if requested.
-	if sync {
+	if sync && importFriendsPossible {
 		_ = importFacebookFriends(ctx, logger, db, router, socialClient, userID, username, token, false)
 	}
 
@@ -300,7 +344,7 @@ AND (NOT EXISTS
 	return nil
 }
 
-func LinkSteam(ctx context.Context, logger *zap.Logger, db *sql.DB, config Config, socialClient *social.Client, userID uuid.UUID, token string) error {
+func LinkSteam(ctx context.Context, logger *zap.Logger, db *sql.DB, config Config, socialClient *social.Client, router MessageRouter, userID uuid.UUID, username, token string, sync bool) error {
 	if config.GetSocial().Steam.PublisherKey == "" || config.GetSocial().Steam.AppID == 0 {
 		return status.Error(codes.FailedPrecondition, "Steam authentication is not configured.")
 	}
@@ -332,5 +376,12 @@ AND (NOT EXISTS
 	} else if count, _ := res.RowsAffected(); count == 0 {
 		return status.Error(codes.AlreadyExists, "Steam ID is already in use.")
 	}
+
+	// Import friends if requested.
+	if sync {
+		steamID := strconv.FormatUint(steamProfile.SteamID, 10)
+		_ = importSteamFriends(ctx, logger, db, router, socialClient, userID, username, config.GetSocial().Steam.PublisherKey, steamID, false)
+	}
+
 	return nil
 }

@@ -22,15 +22,13 @@ package nakama.api;
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 
-option go_package = "api";
+option go_package = "github.com/heroiclabs/nakama-common/api";
 
 option java_multiple_files = true;
 option java_outer_classname = "NakamaApi";
 option java_package = "com.heroiclabs.nakama.api";
 
-option csharp_namespace = "Nakama";
-
-option objc_class_prefix = "NKPB";
+option csharp_namespace = "Nakama.Protobuf";
 
 // A user with additional account details. Always the current user.
 message Account {
@@ -48,6 +46,22 @@ message Account {
   google.protobuf.Timestamp verify_time = 6;
   // The UNIX time when the user's account was disabled/banned.
   google.protobuf.Timestamp disable_time = 7;
+}
+
+// Obtain a new authentication token using a refresh token.
+message AccountRefresh {
+  // Refresh token.
+  string token = 1;
+  // Extra information that will be bundled in the session token.
+  map<string, string> vars = 2;
+}
+
+// Send a Apple Sign In token to the server. Used with authenticate/link/unlink.
+message AccountApple {
+  // The ID token received from Apple to validate.
+  string token = 1;
+  // Extra information that will be bundled in the session token.
+  map<string, string> vars = 2;
 }
 
 // Send a custom ID to the server. Used with authenticate/link/unlink.
@@ -144,6 +158,32 @@ message AddGroupUsersRequest {
   repeated string user_ids = 2;
 }
 
+// Authenticate against the server with a refresh token.
+message SessionRefreshRequest {
+  // Refresh token.
+  string token = 1;
+  // Extra information that will be bundled in the session token.
+  map<string, string> vars = 2;
+}
+
+// Log out a session, invalidate a refresh token, or log out all sessions/refresh tokens for a user.
+message SessionLogoutRequest {
+  // Session token to log out.
+  string token = 1;
+  // Refresh token to invalidate.
+  string refresh_token = 2;
+}
+
+// Authenticate against the server with Apple Sign In.
+message AuthenticateAppleRequest {
+  // The Apple account details.
+  AccountApple account = 1;
+  // Register the account if the user does not already exist.
+  google.protobuf.BoolValue create = 2;
+  // Set the username on the account at register. Must be unique.
+  string username = 3;
+}
+
 // Authenticate against the server with a custom ID.
 message AuthenticateCustomRequest {
   // The custom account details.
@@ -224,6 +264,8 @@ message AuthenticateSteamRequest {
   google.protobuf.BoolValue create = 2;
   // Set the username on the account at register. Must be unique.
   string username = 3;
+  // Import Steam friends for the user.
+  google.protobuf.BoolValue sync = 4;
 }
 
 // Ban users from a group.
@@ -276,10 +318,12 @@ message ChannelMessage {
 message ChannelMessageList {
   // A list of messages.
   repeated ChannelMessage messages = 1;
-  // The cursor to send when retireving the next page, if any.
+  // The cursor to send when retrieving the next page, if any.
   string next_cursor = 2;
   // The cursor to send when retrieving the previous page, if any.
   string prev_cursor = 3;
+  // Cacheable cursor to list newer messages. Durable and designed to be stored, unlike next/prev cursors.
+  string cacheable_cursor = 4;
 }
 
 // Create a group with the current user as owner.
@@ -464,6 +508,14 @@ message ImportFacebookFriendsRequest {
   google.protobuf.BoolValue reset = 2;
 }
 
+// Import Facebook friends into the current user's account.
+message ImportSteamFriendsRequest {
+  // The Facebook account details.
+  AccountSteam account = 1;
+  // Reset the current user's friends list.
+  google.protobuf.BoolValue reset = 2;
+}
+
 // Immediately join an open group, or request to join a closed one.
 message JoinGroupRequest {
   // The group ID to join. The group must already exist.
@@ -535,7 +587,15 @@ message LinkFacebookRequest {
   // The Facebook account details.
   AccountFacebook account = 1;
   // Import Facebook friends for the user.
-  google.protobuf.BoolValue sync = 4;
+  google.protobuf.BoolValue sync = 2;
+}
+
+// Link Steam to the current user's account.
+message LinkSteamRequest {
+  // The Facebook account details.
+  AccountSteam account = 1;
+  // Import Steam friends for the user.
+  google.protobuf.BoolValue sync = 2;
 }
 
 // List a channel's message history.
@@ -708,6 +768,10 @@ message Match {
   google.protobuf.StringValue label = 3;
   // Current number of users in the match.
   int32 size = 4;
+  // Tick Rate
+  int32 tick_rate = 5;
+  // Handler name
+  string handler_name = 6;
 }
 
 // A list of realtime matches.
@@ -750,6 +814,14 @@ message PromoteGroupUsersRequest {
   repeated string user_ids = 2;
 }
 
+// Demote a set of users in a group to the next role down.
+message DemoteGroupUsersRequest {
+  // The group ID to demote in.
+  string group_id = 1;
+  // The users to demote.
+  repeated string user_ids = 2;
+}
+
 // Storage objects to get.
 message ReadStorageObjectId {
   // The collection which stores the object.
@@ -782,6 +854,8 @@ message Session {
   bool created = 1;
   // Authentication credentials.
   string token = 2;
+  // Refresh token that can be used for session token renewal.
+  string refresh_token = 3;
 }
 
 // An object within the storage engine.
@@ -962,8 +1036,10 @@ message User {
   google.protobuf.Timestamp create_time = 15;
   // The UNIX time when the user was last updated.
   google.protobuf.Timestamp update_time = 16;
-  // The Facebook Instant Game id in the user's account.
+  // The Facebook Instant Game ID in the user's account.
   string facebook_instant_game_id = 17;
+  // The Apple Sign In ID in the user's account.
+  string apple_id = 18;
 }
 
 // A list of groups belonging to a user, along with the user's role in each group.
@@ -1000,6 +1076,78 @@ message Users {
   repeated User users = 1;
 }
 
+// Apple IAP Purchases validation request
+message ValidatePurchaseAppleRequest {
+  // Base64 encoded Apple receipt data payload.
+  string receipt = 1;
+}
+
+// Google IAP Purchase validation request
+message ValidatePurchaseGoogleRequest {
+  // JSON encoded Google purchase payload.
+  string purchase = 1;
+}
+
+// Huawei IAP Purchase validation request
+message ValidatePurchaseHuaweiRequest {
+  // JSON encoded Huawei InAppPurchaseData.
+  string purchase = 1;
+  // InAppPurchaseData signature.
+  string signature = 2;
+}
+
+// Validated Purchase stored by Nakama.
+message ValidatedPurchase {
+  // Validation Provider
+  enum Store {
+    // Apple App Store
+    APPLE_APP_STORE = 0;
+    // Google Play Store
+    GOOGLE_PLAY_STORE = 1;
+    // Huawei App Gallery
+    HUAWEI_APP_GALLERY = 2;
+  }
+  // Environment where the purchase took place
+  enum Environment {
+    // Unknown environment.
+    UNKNOWN = 0;
+    // Sandbox/test environment.
+    SANDBOX = 1;
+    // Production environment.
+    PRODUCTION = 2;
+  }
+  // Purchase Product ID.
+  string product_id = 1;
+  // Purchase Transaction ID.
+  string transaction_id = 2;
+  // Store identifier
+  Store store = 3;
+  // UNIX Timestamp when the purchase was done.
+  google.protobuf.Timestamp purchase_time = 4;
+  // UNIX Timestamp when the receipt validation was stored in DB.
+  google.protobuf.Timestamp create_time = 5;
+  // UNIX Timestamp when the receipt validation was updated in DB.
+  google.protobuf.Timestamp update_time = 6;
+  // Raw provider validation response.
+  string provider_response = 7;
+  // Whether the purchase was done in production or sandbox environment.
+  Environment environment = 8;
+}
+
+// Validate IAP response
+message ValidatePurchaseResponse {
+  // Newly seen validated purchases.
+  repeated ValidatedPurchase validated_purchases = 1;
+}
+
+// A list of validated purchases stored by Nakama.
+message PurchaseList {
+  // Stored validated purchases.
+  repeated ValidatedPurchase validated_purchases = 1;
+  // The cursor to send when retrieving the next page, if any.
+  string cursor = 2;
+}
+
 // A request to submit a score to a leaderboard.
 message WriteLeaderboardRecordRequest {
   // Record values to write.
@@ -1010,6 +1158,8 @@ message WriteLeaderboardRecordRequest {
     int64 subscore = 2;
     // Optional record metadata.
     string metadata = 3;
+    // Operator override.
+    OverrideOperator operator = 4;
   }
 
   // The ID of the leaderboard to write to.
@@ -1050,10 +1200,26 @@ message WriteTournamentRecordRequest {
     int64 subscore = 2;
     // A JSON object of additional properties (optional).
     string metadata = 3;
+    // Operator override.
+    OverrideOperator operator = 4;
   }
 
   // The tournament ID to write the record for.
   string tournament_id = 1;
   // Record input.
   TournamentRecordWrite record = 2;
+}
+
+// Operator that can be used to override the one set in the leaderboard.
+enum OverrideOperator {
+  // Do not override the leaderboard operator.
+  NO_OVERRIDE = 0;
+  // Override the leaderboard operator with BEST.
+  BEST = 1;
+  // Override the leaderboard operator with SET.
+  SET = 2;
+  // Override the leaderboard operator with INCREMENT.
+  INCREMENT = 3;
+  // Override the leaderboard operator with DECREMENT.
+  DECREMENT = 4;
 }

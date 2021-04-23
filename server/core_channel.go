@@ -20,16 +20,16 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/gob"
+	"errors"
 	"fmt"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"strings"
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/jackc/pgx/pgtype"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -163,13 +163,13 @@ WHERE stream_mode = $1 AND stream_subject = $2::UUID AND stream_descriptor = $3:
 		message := &api.ChannelMessage{
 			ChannelId:  channelID,
 			MessageId:  dbID,
-			Code:       &wrappers.Int32Value{Value: dbCode},
+			Code:       &wrapperspb.Int32Value{Value: dbCode},
 			SenderId:   dbSenderID,
 			Username:   dbUsername,
 			Content:    dbContent,
-			CreateTime: &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-			UpdateTime: &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
-			Persistent: &wrappers.BoolValue{Value: true},
+			CreateTime: &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+			UpdateTime: &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+			Persistent: &wrapperspb.BoolValue{Value: true},
 		}
 		switch stream.Mode {
 		case StreamModeChannel:
@@ -214,6 +214,29 @@ WHERE stream_mode = $1 AND stream_subject = $2::UUID AND stream_descriptor = $3:
 		}
 	}
 
+	var cacheableCursor *channelMessageListCursor
+	if l := len(messages); l > 0 {
+		// There is at least 1 message returned by the listing, so use it as the foundation of a new cacheable cursor.
+		cacheableCursor = &channelMessageListCursor{
+			StreamMode:       stream.Mode,
+			StreamSubject:    stream.Subject.String(),
+			StreamSubcontext: stream.Subcontext.String(),
+			StreamLabel:      stream.Label,
+			CreateTime:       messages[l-1].CreateTime.Seconds,
+			Id:               messages[l-1].MessageId,
+			Forward:          true,
+			IsNext:           true,
+		}
+	} else if forward && incomingCursor != nil {
+		// No messages but it was a forward paginated listing and there was a cursor, use that as a cacheable cursor.
+		cacheableCursor = incomingCursor
+	} else if !forward && incomingCursor != nil {
+		// No messages but it was a backwards paginated listing and there was a cursor, use that as a cacheable cursor with its direction flipped.
+		cacheableCursor = incomingCursor
+		cacheableCursor.Forward = true
+		cacheableCursor.IsNext = true
+	}
+
 	var nextCursorStr string
 	if nextCursor != nil {
 		cursorBuf := new(bytes.Buffer)
@@ -232,11 +255,21 @@ WHERE stream_mode = $1 AND stream_subject = $2::UUID AND stream_descriptor = $3:
 		}
 		prevCursorStr = base64.StdEncoding.EncodeToString(cursorBuf.Bytes())
 	}
+	var cacheableCursorStr string
+	if cacheableCursor != nil {
+		cursorBuf := new(bytes.Buffer)
+		if err := gob.NewEncoder(cursorBuf).Encode(cacheableCursor); err != nil {
+			logger.Error("Error creating channel messages list cacheable cursor", zap.Error(err))
+			return nil, err
+		}
+		cacheableCursorStr = base64.StdEncoding.EncodeToString(cursorBuf.Bytes())
+	}
 
 	return &api.ChannelMessageList{
-		Messages:   messages,
-		NextCursor: nextCursorStr,
-		PrevCursor: prevCursorStr,
+		Messages:        messages,
+		NextCursor:      nextCursorStr,
+		PrevCursor:      prevCursorStr,
+		CacheableCursor: cacheableCursorStr,
 	}, nil
 }
 
@@ -281,13 +314,13 @@ func GetChannelMessages(ctx context.Context, logger *zap.Logger, db *sql.DB, use
 		messages = append(messages, &api.ChannelMessage{
 			ChannelId:  channelID,
 			MessageId:  dbID,
-			Code:       &wrappers.Int32Value{Value: dbCode},
+			Code:       &wrapperspb.Int32Value{Value: dbCode},
 			SenderId:   userID.String(),
 			Username:   dbUsername,
 			Content:    dbContent,
-			CreateTime: &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-			UpdateTime: &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
-			Persistent: &wrappers.BoolValue{Value: true},
+			CreateTime: &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+			UpdateTime: &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+			Persistent: &wrapperspb.BoolValue{Value: true},
 		})
 	}
 

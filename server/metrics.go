@@ -17,11 +17,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"go.uber.org/atomic"
 	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/gorilla/handlers"
 	"github.com/uber-go/tally"
@@ -105,7 +106,7 @@ func NewMetrics(logger, startupLogger *zap.Logger, config Config) *Metrics {
 		tags["namespace"] = namespace
 	}
 	m.prometheusScope, m.prometheusCloser = tally.NewRootScope(tally.ScopeOptions{
-		Prefix:          config.GetName(),
+		Prefix:          config.GetMetrics().Prefix,
 		Tags:            tags,
 		CachedReporter:  reporter,
 		Separator:       prometheus.DefaultSeparator,
@@ -165,8 +166,11 @@ func (m *Metrics) Api(name string, elapsed time.Duration, recvBytes, sentBytes i
 
 	// Global stats.
 	m.prometheusScope.Counter("overall_count").Inc(1)
+	m.prometheusScope.Counter("overall_request_count").Inc(1)
 	m.prometheusScope.Counter("overall_recv_bytes").Inc(recvBytes)
+	m.prometheusScope.Counter("overall_request_recv_bytes").Inc(recvBytes)
 	m.prometheusScope.Counter("overall_sent_bytes").Inc(sentBytes)
+	m.prometheusScope.Counter("overall_request_sent_bytes").Inc(sentBytes)
 	m.prometheusScope.Timer("overall_latency_ms").Record(elapsed / time.Millisecond)
 
 	// Per-endpoint stats.
@@ -178,6 +182,7 @@ func (m *Metrics) Api(name string, elapsed time.Duration, recvBytes, sentBytes i
 	// Error stats if applicable.
 	if isErr {
 		m.prometheusScope.Counter("overall_errors").Inc(1)
+		m.prometheusScope.Counter("overall_request_errors").Inc(1)
 		m.prometheusScope.Counter(name + "_errors").Inc(1)
 	}
 }
@@ -218,9 +223,59 @@ func (m *Metrics) ApiAfter(name string, elapsed time.Duration, isErr bool) {
 	}
 }
 
+func (m *Metrics) Message(recvBytes int64, isErr bool) {
+	//name = strings.TrimPrefix(name, API_PREFIX)
+
+	// Increment ongoing statistics for current measurement window.
+	//m.currentMsTotal.Add(int64(elapsed / time.Millisecond))
+	m.currentReqCount.Inc()
+	m.currentRecvBytes.Add(recvBytes)
+	//m.currentSentBytes.Add(sentBytes)
+
+	// Global stats.
+	m.prometheusScope.Counter("overall_count").Inc(1)
+	m.prometheusScope.Counter("overall_message_count").Inc(1)
+	m.prometheusScope.Counter("overall_recv_bytes").Inc(recvBytes)
+	m.prometheusScope.Counter("overall_message_recv_bytes").Inc(recvBytes)
+	//m.prometheusScope.Counter("overall_sent_bytes").Inc(sentBytes)
+	//m.prometheusScope.Timer("overall_latency_ms").Record(elapsed / time.Millisecond)
+
+	// Per-message stats.
+	//m.prometheusScope.Counter(name + "_count").Inc(1)
+	//m.prometheusScope.Counter(name + "_recv_bytes").Inc(recvBytes)
+	//m.prometheusScope.Counter(name + "_sent_bytes").Inc(sentBytes)
+	//m.prometheusScope.Timer(name + "_latency_ms").Record(elapsed / time.Millisecond)
+
+	// Error stats if applicable.
+	if isErr {
+		m.prometheusScope.Counter("overall_errors").Inc(1)
+		m.prometheusScope.Counter("overall_message_errors").Inc(1)
+		//m.prometheusScope.Counter(name + "_errors").Inc(1)
+	}
+}
+
+func (m *Metrics) MessageBytesSent(sentBytes int64) {
+	// Increment ongoing statistics for current measurement window.
+	m.currentSentBytes.Add(sentBytes)
+
+	// Global stats.
+	m.prometheusScope.Counter("overall_sent_bytes").Inc(sentBytes)
+	m.prometheusScope.Counter("overall_message_sent_bytes").Inc(sentBytes)
+}
+
 // Set the absolute value of currently allocated Lua runtime VMs.
 func (m *Metrics) GaugeRuntimes(value float64) {
 	m.prometheusScope.Gauge("lua_runtimes").Update(value)
+}
+
+// Set the absolute value of currently allocated Lua runtime VMs.
+func (m *Metrics) GaugeLuaRuntimes(value float64) {
+	m.prometheusScope.Gauge("lua_runtimes").Update(value)
+}
+
+// Set the absolute value of currently allocated JavaScript runtime VMs.
+func (m *Metrics) GaugeJsRuntimes(value float64) {
+	m.prometheusScope.Gauge("javascript_runtimes").Update(value)
 }
 
 // Set the absolute value of currently running authoritative matches.
@@ -246,4 +301,9 @@ func (m *Metrics) CountWebsocketClosed(delta int64) {
 // Set the absolute value of currently active sessions.
 func (m *Metrics) GaugeSessions(value float64) {
 	m.prometheusScope.Gauge("sessions").Update(value)
+}
+
+// Set the absolute value of currently tracked presences.
+func (m *Metrics) GaugePresences(value float64) {
+	m.prometheusScope.Gauge("presences").Update(value)
 }

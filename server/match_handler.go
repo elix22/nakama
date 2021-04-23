@@ -16,11 +16,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/heroiclabs/nakama-common/runtime"
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
@@ -69,6 +70,9 @@ func (m *MatchDataMessage) GetReliable() bool {
 func (m *MatchDataMessage) GetReceiveTime() int64 {
 	return m.ReceiveTime
 }
+func (m *MatchDataMessage) GetReason() runtime.PresenceReason {
+	return runtime.PresenceReasonUnknown
+}
 
 type MatchHandler struct {
 	logger          *zap.Logger
@@ -78,7 +82,7 @@ type MatchHandler struct {
 
 	JoinMarkerList *MatchJoinMarkerList
 	PresenceList   *MatchPresenceList
-	core           RuntimeMatchCore
+	Core           RuntimeMatchCore
 
 	// Identification not (directly) controlled by match init.
 	ID     uuid.UUID
@@ -110,7 +114,6 @@ type MatchHandler struct {
 
 func NewMatchHandler(logger *zap.Logger, config Config, sessionRegistry SessionRegistry, matchRegistry MatchRegistry, router MessageRouter, core RuntimeMatchCore, id uuid.UUID, node string, stopped *atomic.Bool, params map[string]interface{}) (*MatchHandler, error) {
 	presenceList := NewMatchPresenceList()
-
 	deferredCh := make(chan *DeferredMessage, config.GetMatch().DeferredQueueSize)
 	deferMessageFn := func(msg *DeferredMessage) error {
 		select {
@@ -140,7 +143,7 @@ func NewMatchHandler(logger *zap.Logger, config Config, sessionRegistry SessionR
 
 		JoinMarkerList: NewMatchJoinMarkerList(config, int64(rateInt)),
 		PresenceList:   presenceList,
-		core:           core,
+		Core:           core,
 
 		ID:    id,
 		Node:  node,
@@ -200,9 +203,9 @@ func NewMatchHandler(logger *zap.Logger, config Config, sessionRegistry SessionR
 
 // Disconnect all clients currently connected to the server.
 func (mh *MatchHandler) disconnectClients() {
-	presenceIDs := mh.PresenceList.ListPresenceIDs()
-	for _, presenceID := range presenceIDs {
-		_ = mh.sessionRegistry.Disconnect(context.Background(), presenceID.SessionID, presenceID.Node)
+	presences := mh.PresenceList.ListPresences()
+	for _, presence := range presences {
+		_ = mh.sessionRegistry.Disconnect(context.Background(), presence.SessionID)
 	}
 }
 
@@ -218,13 +221,25 @@ func (mh *MatchHandler) Stop() {
 	// Ensure any remaining deferred broadcasts are sent.
 	mh.processDeferred()
 
-	mh.core.Cancel()
+	mh.Core.Cancel()
 	close(mh.stopCh)
 	mh.ticker.Stop()
 }
 
 func (mh *MatchHandler) Label() string {
-	return mh.core.Label()
+	return mh.Core.Label()
+}
+
+func (mh *MatchHandler) TickRate() int {
+	return mh.Core.TickRate()
+}
+
+func (mh *MatchHandler) HandlerName() string {
+	return mh.Core.HandlerName()
+}
+
+func (mh *MatchHandler) CreateTime() int64 {
+	return mh.Core.CreateTime()
 }
 
 func (mh *MatchHandler) queueCall(f func(*MatchHandler)) bool {
@@ -265,7 +280,7 @@ func loop(mh *MatchHandler) {
 	}
 
 	// Execute the loop.
-	state, err := mh.core.MatchLoop(mh.tick, mh.state, mh.inputCh)
+	state, err := mh.Core.MatchLoop(mh.tick, mh.state, mh.inputCh)
 	if err != nil {
 		mh.Stop()
 		mh.disconnectClients()
@@ -346,7 +361,7 @@ func (mh *MatchHandler) QueueJoinAttempt(ctx context.Context, resultCh chan<- *M
 			return
 		}
 
-		state, allow, reason, err := mh.core.MatchJoinAttempt(mh.tick, mh.state, userID, sessionID, username, sessionExpiry, vars, clientIP, clientPort, node, metadata)
+		state, allow, reason, err := mh.Core.MatchJoinAttempt(mh.tick, mh.state, userID, sessionID, username, sessionExpiry, vars, clientIP, clientPort, node, metadata)
 		if err != nil {
 			mh.Stop()
 			resultCh <- &MatchJoinResult{Allow: false}
@@ -372,7 +387,7 @@ func (mh *MatchHandler) QueueJoinAttempt(ctx context.Context, resultCh chan<- *M
 			mh.QueueJoin([]*MatchPresence{presence}, false)
 		}
 		// Signal client.
-		resultCh <- &MatchJoinResult{Allow: allow, Reason: reason, Label: mh.core.Label()}
+		resultCh <- &MatchJoinResult{Allow: allow, Reason: reason, Label: mh.Core.Label()}
 	}
 
 	select {
@@ -384,6 +399,40 @@ func (mh *MatchHandler) QueueJoinAttempt(ctx context.Context, resultCh chan<- *M
 		mh.logger.Warn("Match handler join attempt queue full")
 		return false
 	}
+}
+
+func (mh *MatchHandler) QueueGetState(ctx context.Context, resultCh chan<- *MatchGetStateResult) bool {
+	if mh.stopped.Load() {
+		return false
+	}
+
+	getState := func(mh *MatchHandler) {
+		select {
+		case <-ctx.Done():
+			// Do not process the get state shapshot request through the match handler if the client has gone away between
+			// when this call was inserted into the match call queue and when it's due for processing.
+			resultCh <- &MatchGetStateResult{}
+			return
+		default:
+		}
+
+		if mh.stopped.Load() {
+			resultCh <- &MatchGetStateResult{Error: ErrMatchNotFound}
+			return
+		}
+
+		state, err := mh.Core.GetState(mh.state)
+		if err != nil {
+			// Errors getting a match state snapshot do not result in the match stopping.
+			resultCh <- &MatchGetStateResult{Error: err}
+			return
+		}
+
+		// Signal caller.
+		resultCh <- &MatchGetStateResult{Presences: mh.PresenceList.ListPresences(), Tick: mh.tick, State: state}
+	}
+
+	return mh.queueCall(getState)
 }
 
 func (mh *MatchHandler) QueueJoin(joins []*MatchPresence, mark bool) bool {
@@ -406,7 +455,7 @@ func (mh *MatchHandler) QueueJoin(joins []*MatchPresence, mark bool) bool {
 
 		processed := mh.PresenceList.Join(joins)
 		if len(processed) != 0 {
-			state, err := mh.core.MatchJoin(mh.tick, mh.state, processed)
+			state, err := mh.Core.MatchJoin(mh.tick, mh.state, processed)
 			if err != nil {
 				mh.Stop()
 				mh.disconnectClients()
@@ -445,7 +494,7 @@ func (mh *MatchHandler) QueueLeave(leaves []*MatchPresence) bool {
 				mh.JoinMarkerList.Mark(leave.SessionID)
 			}
 
-			state, err := mh.core.MatchLeave(mh.tick, mh.state, leaves)
+			state, err := mh.Core.MatchLeave(mh.tick, mh.state, leaves)
 			if err != nil {
 				mh.Stop()
 				mh.disconnectClients()
@@ -478,7 +527,7 @@ func (mh *MatchHandler) QueueTerminate(graceSeconds int) bool {
 			return
 		}
 
-		state, err := mh.core.MatchTerminate(mh.tick, mh.state, graceSeconds)
+		state, err := mh.Core.MatchTerminate(mh.tick, mh.state, graceSeconds)
 		if err != nil {
 			mh.Stop()
 			mh.disconnectClients()

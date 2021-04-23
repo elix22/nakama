@@ -20,16 +20,16 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/gob"
+	"errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/jackc/pgx/pgtype"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +37,7 @@ var (
 	ErrLeaderboardNotFound      = errors.New("leaderboard not found")
 	ErrLeaderboardAuthoritative = errors.New("leaderboard only allows authoritative submissions")
 	ErrLeaderboardInvalidCursor = errors.New("leaderboard cursor invalid")
+	ErrInvalidOperator          = errors.New("invalid operator")
 )
 
 type leaderboardRecordListCursor struct {
@@ -51,7 +52,7 @@ type leaderboardRecordListCursor struct {
 	Rank          int64
 }
 
-func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, leaderboardId string, limit *wrappers.Int32Value, cursor string, ownerIds []string, overrideExpiry int64) (*api.LeaderboardRecordList, error) {
+func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, leaderboardId string, limit *wrapperspb.Int32Value, cursor string, ownerIds []string, overrideExpiry int64) (*api.LeaderboardRecordList, error) {
 	leaderboard := leaderboardCache.Get(leaderboardId)
 	if leaderboard == nil {
 		return nil, ErrLeaderboardNotFound
@@ -71,7 +72,7 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 		limitNumber := int(limit.Value)
 		var incomingCursor *leaderboardRecordListCursor
 		if cursor != "" {
-			cb, err := base64.StdEncoding.DecodeString(cursor)
+			cb, err := base64.URLEncoding.DecodeString(cursor)
 			if err != nil {
 				return nil, ErrLeaderboardInvalidCursor
 			}
@@ -170,15 +171,15 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 				NumScore:      dbNumScore,
 				MaxNumScore:   uint32(dbMaxNumScore),
 				Metadata:      dbMetadata,
-				CreateTime:    &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-				UpdateTime:    &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+				CreateTime:    &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+				UpdateTime:    &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
 				Rank:          rank,
 			}
 			if dbUsername.Valid {
-				record.Username = &wrappers.StringValue{Value: dbUsername.String}
+				record.Username = &wrapperspb.StringValue{Value: dbUsername.String}
 			}
 			if expiryTime != 0 {
-				record.ExpiryTime = &timestamp.Timestamp{Seconds: expiryTime}
+				record.ExpiryTime = &timestamppb.Timestamp{Seconds: expiryTime}
 			}
 
 			records = append(records, record)
@@ -221,7 +222,7 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 				logger.Error("Error creating leaderboard records list next cursor", zap.Error(err))
 				return nil, err
 			}
-			nextCursorStr = base64.StdEncoding.EncodeToString(cursorBuf.Bytes())
+			nextCursorStr = base64.URLEncoding.EncodeToString(cursorBuf.Bytes())
 		}
 		if prevCursor != nil {
 			cursorBuf := new(bytes.Buffer)
@@ -229,7 +230,7 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 				logger.Error("Error creating leaderboard records list previous cursor", zap.Error(err))
 				return nil, err
 			}
-			prevCursorStr = base64.StdEncoding.EncodeToString(cursorBuf.Bytes())
+			prevCursorStr = base64.URLEncoding.EncodeToString(cursorBuf.Bytes())
 		}
 	}
 
@@ -263,7 +264,7 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 		for rows.Next() {
 			err = rows.Scan(&dbOwnerID, &dbUsername, &dbScore, &dbSubscore, &dbNumScore, &dbMaxNumScore, &dbMetadata, &dbCreateTime, &dbUpdateTime)
 			if err != nil {
-				_ = rows.Close()
+				rows.Close()
 				logger.Error("Error parsing read leaderboard records", zap.Error(err))
 				return nil, err
 			}
@@ -277,14 +278,14 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 				NumScore:      dbNumScore,
 				MaxNumScore:   uint32(dbMaxNumScore),
 				Metadata:      dbMetadata,
-				CreateTime:    &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-				UpdateTime:    &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+				CreateTime:    &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+				UpdateTime:    &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
 			}
 			if dbUsername.Valid {
-				record.Username = &wrappers.StringValue{Value: dbUsername.String}
+				record.Username = &wrapperspb.StringValue{Value: dbUsername.String}
 			}
 			if expiryTime != 0 {
-				record.ExpiryTime = &timestamp.Timestamp{Seconds: expiryTime}
+				record.ExpiryTime = &timestamppb.Timestamp{Seconds: expiryTime}
 			}
 
 			ownerRecords = append(ownerRecords, record)
@@ -303,7 +304,7 @@ func LeaderboardRecordsList(ctx context.Context, logger *zap.Logger, db *sql.DB,
 	}, nil
 }
 
-func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, caller uuid.UUID, leaderboardId, ownerID, username string, score, subscore int64, metadata string) (*api.LeaderboardRecord, error) {
+func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, caller uuid.UUID, leaderboardId, ownerID, username string, score, subscore int64, metadata string, overrideOperator api.OverrideOperator) (*api.LeaderboardRecord, error) {
 	leaderboard := leaderboardCache.Get(leaderboardId)
 	if leaderboard == nil {
 		return nil, ErrLeaderboardNotFound
@@ -318,13 +319,29 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 		expiryTime = leaderboard.ResetSchedule.Next(time.Now().UTC()).UTC().Unix()
 	}
 
+	operator := leaderboard.Operator
+	if overrideOperator != api.OverrideOperator_NO_OVERRIDE {
+		switch overrideOperator {
+		case api.OverrideOperator_INCREMENT:
+			operator = LeaderboardOperatorIncrement
+		case api.OverrideOperator_SET:
+			operator = LeaderboardOperatorSet
+		case api.OverrideOperator_BEST:
+			operator = LeaderboardOperatorBest
+		case api.OverrideOperator_DECREMENT:
+			operator = LeaderboardOperatorDecrement
+		default:
+			return nil, ErrInvalidOperator
+		}
+	}
+
 	var opSQL string
 	var filterSQL string
 	var scoreDelta int64
 	var subscoreDelta int64
 	var scoreAbs int64
 	var subscoreAbs int64
-	switch leaderboard.Operator {
+	switch operator {
 	case LeaderboardOperatorIncrement:
 		opSQL = "score = leaderboard_record.score + $8, subscore = leaderboard_record.subscore + $9"
 		filterSQL = " WHERE $8 <> 0 OR $9 <> 0"
@@ -332,9 +349,16 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 		subscoreDelta = subscore
 		scoreAbs = score
 		subscoreAbs = subscore
+	case LeaderboardOperatorDecrement:
+		opSQL = "score = GREATEST(leaderboard_record.score - $8, 0), subscore = GREATEST(leaderboard_record.subscore - $9, 0)"
+		filterSQL = " WHERE $8 <> 0 OR $9 <> 0"
+		scoreDelta = score
+		subscoreDelta = subscore
+		scoreAbs = 0
+		subscoreAbs = 0
 	case LeaderboardOperatorSet:
-		opSQL = "score = $8, subscore = $9"
-		filterSQL = " WHERE leaderboard_record.score <> $8 OR leaderboard_record.subscore <> $9"
+		opSQL = "score = $4, subscore = $5"
+		filterSQL = " WHERE leaderboard_record.score <> $5 OR leaderboard_record.subscore <> $5"
 		scoreDelta = score
 		subscoreDelta = subscore
 		scoreAbs = score
@@ -344,12 +368,12 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 	default:
 		if leaderboard.SortOrder == LeaderboardSortOrderAscending {
 			// Lower score is better.
-			opSQL = "score = div((leaderboard_record.score + $8 - abs(leaderboard_record.score - $8)), 2), subscore = div((leaderboard_record.subscore + $9 - abs(leaderboard_record.subscore - $9)), 2)"
-			filterSQL = " WHERE leaderboard_record.score > $8 OR leaderboard_record.subscore > $9"
+			opSQL = "score = LEAST(leaderboard_record.score, $4), subscore = LEAST(leaderboard_record.subscore, $5)"
+			filterSQL = " WHERE leaderboard_record.score > $4 OR leaderboard_record.subscore > $5"
 		} else {
 			// Higher score is better.
-			opSQL = "score = div((leaderboard_record.score + $8 + abs(leaderboard_record.score - $8)), 2), subscore = div((leaderboard_record.subscore + $9 + abs(leaderboard_record.subscore - $9)), 2)"
-			filterSQL = " WHERE leaderboard_record.score < $8 OR leaderboard_record.subscore < $9"
+			opSQL = "score = GREATEST(leaderboard_record.score, $4), subscore = GREATEST(leaderboard_record.subscore, $5)"
+			filterSQL = " WHERE leaderboard_record.score < $4 OR leaderboard_record.subscore < $5"
 		}
 		scoreDelta = score
 		subscoreDelta = subscore
@@ -374,7 +398,10 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 	} else {
 		params = append(params, metadata)
 	}
-	params = append(params, time.Unix(expiryTime, 0).UTC(), scoreDelta, subscoreDelta)
+	params = append(params, time.Unix(expiryTime, 0).UTC())
+	if operator == LeaderboardOperatorIncrement || operator == LeaderboardOperatorDecrement {
+		params = append(params, scoreDelta, subscoreDelta)
+	}
 
 	_, err := db.ExecContext(ctx, query, params...)
 	if err != nil {
@@ -409,14 +436,14 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 		NumScore:      dbNumScore,
 		MaxNumScore:   uint32(dbMaxNumScore),
 		Metadata:      dbMetadata,
-		CreateTime:    &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-		UpdateTime:    &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+		CreateTime:    &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+		UpdateTime:    &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
 	}
 	if dbUsername.Valid {
-		record.Username = &wrappers.StringValue{Value: dbUsername.String}
+		record.Username = &wrapperspb.StringValue{Value: dbUsername.String}
 	}
 	if expiryTime != 0 {
-		record.ExpiryTime = &timestamp.Timestamp{Seconds: expiryTime}
+		record.ExpiryTime = &timestamppb.Timestamp{Seconds: expiryTime}
 	}
 
 	return record, nil
@@ -425,7 +452,7 @@ func LeaderboardRecordWrite(ctx context.Context, logger *zap.Logger, db *sql.DB,
 func LeaderboardRecordDelete(ctx context.Context, logger *zap.Logger, db *sql.DB, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, caller uuid.UUID, leaderboardId, ownerID string) error {
 	leaderboard := leaderboardCache.Get(leaderboardId)
 	if leaderboard == nil {
-		return nil
+		return ErrLeaderboardNotFound
 	}
 
 	if leaderboard.Authoritative && caller != uuid.Nil {
@@ -521,14 +548,14 @@ func getLeaderboardRecordsHaystack(ctx context.Context, logger *zap.Logger, db *
 		NumScore:      dbNumScore,
 		MaxNumScore:   uint32(dbMaxNumScore),
 		Metadata:      dbMetadata,
-		CreateTime:    &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-		UpdateTime:    &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+		CreateTime:    &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+		UpdateTime:    &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
 	}
 	if dbUsername.Valid {
-		ownerRecord.Username = &wrappers.StringValue{Value: dbUsername.String}
+		ownerRecord.Username = &wrapperspb.StringValue{Value: dbUsername.String}
 	}
 	if expiryTime := dbExpiryTime.Time.Unix(); expiryTime != 0 {
-		ownerRecord.ExpiryTime = &timestamp.Timestamp{Seconds: expiryTime}
+		ownerRecord.ExpiryTime = &timestamppb.Timestamp{Seconds: expiryTime}
 	}
 
 	if limit == 1 {
@@ -641,15 +668,15 @@ func parseLeaderboardRecords(logger *zap.Logger, rows *sql.Rows) ([]*api.Leaderb
 			NumScore:      dbNumScore,
 			MaxNumScore:   uint32(dbMaxNumScore),
 			Metadata:      dbMetadata,
-			CreateTime:    &timestamp.Timestamp{Seconds: dbCreateTime.Time.Unix()},
-			UpdateTime:    &timestamp.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
+			CreateTime:    &timestamppb.Timestamp{Seconds: dbCreateTime.Time.Unix()},
+			UpdateTime:    &timestamppb.Timestamp{Seconds: dbUpdateTime.Time.Unix()},
 		}
 		if dbUsername.Valid {
-			record.Username = &wrappers.StringValue{Value: dbUsername.String}
+			record.Username = &wrapperspb.StringValue{Value: dbUsername.String}
 		}
 		expiryTime := dbExpiryTime.Time.Unix()
 		if expiryTime != 0 {
-			record.ExpiryTime = &timestamp.Timestamp{Seconds: expiryTime}
+			record.ExpiryTime = &timestamppb.Timestamp{Seconds: expiryTime}
 		}
 
 		records = append(records, record)

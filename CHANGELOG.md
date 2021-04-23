@@ -5,7 +5,186 @@ The format is based on [keep a changelog](http://keepachangelog.com) and this pr
 
 ## [Unreleased]
 ### Changed
+- Change runtime group add/kick/promote/demote APIs to include optional callerID parameter for permission checking. If callerID is an empty string it defaults to the admin user.
+### Fixed
+- Fix reading Lua authoritative match states that contain functions.
+- Correct path representation for embedded migrations and console files on Windows systems.
+
+## [3.2.1] - 2021-04-19
+### Changed
+- A user's online indicator now observes the status mode rather than just socket connectivity.
+- Update sql-migrate library to a32ed26.
+- Rework some migrations for better compatibility with different database engines.
+- Update to Protobuf v1.5.2, GRPC v1.37.0, and GRPC-Gateway v2.3.0 releases.
+- Update to Bleve v2.0.3 release.
+- Various other dependency updates.
+
+### Fixed
+- Fix user scoping in Nakama Console purchase listing view.
+
+## [3.2.0] - 2021-04-14
+### Added
+- New API to logout and intercept logouts with session and refresh tokens.
+- Add a leave reason to presence events to handle transient disconnects more easily.
+- New API for IAP validation with Apple App Store, Google Play Store, and Huawei AppGallery.
+
+### Changed
+- Improve struct field alignment on types in the social package.
+- Improve memory re-use within the matchmaker and match registry structures.
+- Support Facebook Limited Login tokens received into the standard Facebook login/link/unlink functions.
+- Update JS VM to newer version. This resolves an issue with resizing some JS arrays.
+- Build with Go 1.16.3 release.
+
+### Fixed
+- Matchmaker entries which were only partially matched together could not combine with larger player counts.
+- Fix bad inputs parsed in some before/after hook executions made from the API Explorer in the Console.
+- Correctly return Unix timestamps in JS runtime functions returning users/accounts data.
+
+## [3.1.2] - 2021-03-03
+### Changed
+- Sort match listings to show newer created matches first by default.
+- Loosen status follow input validation and constraints to ignore unrecognised user IDs and usernames.
+- Build with Go 1.16.0 release.
+- Do not import Steam friends by default on Steam authentication.
+- Do not import Facebook friends by default on Facebook authentication.
+- Improve match label update batching semantics.
+- Account object returned by some JS runtime functions are not flattened with user values anymore.
+
+### Fixed
+- Fix an issue in the JS runtime that would prevent the matchmaker matched callback to function correctly.
+- Allow the console API to return large responses based on the configured max message size.
+- Allow JS runtime initializer functions to be invoked inside a try/catch block.
+- Fix Tournament Reset function hook schedules calcuated on first write if the end active time must be computed with no reset schedule.
+
+## [3.1.1] - 2021-02-15
+### Changed
+- Go runtime logger now identifies the file/line in the runtime as the caller rather than the logger.
+- Build with Go 1.15.8 release.
+- Use a newer CA certificates package within the Docker containers.
+
+### Fixed
+- Fix an issue that prevented the JavaScript runtime hooks to be invoked correctly.
+- Fix the delete button not working in the console leaderboard listing.
+- GetUsers can fetch user accounts by Facebook ID the same as in the client API.
+
+## [3.1.0] - 2021-02-04
+### Added
+- New APIs to import Steam friends into the social graph.
+
+### Changed
+- Improve output of "nakama migrate status" command when database contains unknown migrations.
+- The socket status flag is now parsed as case-insensitive.
+- Build with Go 1.15.7 release.
+
+### Fixed
+- Fix an issue with the JS runtime multiUpdate function.
+- Fix an issue where the JS runtime would call the InitModule function twice.
+- Fix how the JS runtime invokes matchmakerMatched and leaderboard/tournament related hooks.
+- Fix JS VM not being put back into the pool after an RPC call.
+
+## [3.0.0] - 2021-01-16
+
+This is a major release of the server but **fully backwards compatible** with the 2.x releases.
+
+### Added
+- New JavaScript runtime to write server code.
+- Introduce refresh tokens that can be used to refresh sessions.
+- New Realtime Parties for users to create teamplay in games. Users can form a party and communicate with party members.
+- Add party matching support to the Matchmaker.
+- Add options to the Matchmaker to control how long tickets wait for their preferred match.
+- Add Console UI permissions API.
+- New "ReadFile" runtime function to read files within the "--runtime.path" folder.
+
+### Changed
+- Rebuild Console UI with Angular framework. Manage user data, update objects, restrict access to production with permission profiles, and gain greater visibility into realtime features like active matches.
+- Matchmaker improvements to the process for matching and the handling of player count ranges.
+- Authoritative match handlers can now tick at 60 per second.
+- Support CockroachDB 20.2 release.
+- Build with Go 1.15.6 release.
+
+### Fixed
+- Return rank field in Lua API for leaderboard record writes.
+- Return social fields for users in friend listings.
+
+## [2.15.0] - 2020-11-28
+### Added
+- Add cacheable cursor to channel message listings.
+- Add group management functions to the server runtime. Thanks @4726.
+
+### Changed
+- Make metrics prefix configurable and set a default value.
+- Pin the GRPC Go plugin for the protoc compiler with a tool dependency.
+- Build with Go 1.15.5 release.
+- Use the Facebook Graph API v9.0 version.
+- Facebook authentication no longer requires access to gender, locale, and timezone data.
+- Update to Bleve v1.0.13 release.
+- Update to nakama-common 1.10.0 release.
+- Skip logging Lua errors raised by explicit runtime calls to the `error({ msg, code })` function.
+
+### Fixed
+- Better handling of SSL negotiation in development with certs provided to the server.
+- Use correct error message and response code when RPC functions receive a request payload larger than allowed.
+- Expose missing 'group_users_kick' function to the Lua runtime.
+- Fix an issue that would cause an error when trying to update a tournament record with invalid data.
+- Fix some issues around listing tournaments.
+- Fix an issue that would prevent the insertion of a record in a tournament with no scheduled reset and end time.
+- Ensure the devconsole applies user password updates even if no other fields change.
+- Fix third-party authentication ids not getting returned if queried through the friends graph.
+
+## [2.14.1] - 2020-11-02
+### Added
+- Event contexts now contain user information for external events.
+- Expose more metrics for socket activity.
+- New [Docker release](https://hub.docker.com/repository/docker/heroiclabs/nakama-dsym) of the server with debug symbols enabled.
+- Add "TournamentRecordsList" and "ListFriends" functions to the Go server runtime.
+- Add "friends_list" and "tournament_records_list" functions to the Lua server runtime.
+
+### Changed
+- Build with Go 1.15.3 release.
+- Update to Protobuf v1.4.3, GRPC v1.33.1, and GRPC-Gateway v2.0.1 releases.
+- Update protocol definitions for OpenAPIv2 code generator.
+
+### Fixed
+- Fix score comparisons on leaderboard record ranks in cache. Thanks @4726.
+- Put "rank" field into results from "tournament_records_haystack" calls in Lua server runtime.
+- Add missing cursor return values from "GroupUsersList" and "UsersGroupList" functions in the Go server runtime.
+
+## [2.14.0] - 2020-10-03
+### Added
+- Publish new metric for presences count.
+- Use a "tool dependency" to specify the protoc-gen-go, protoc-gen-grpc-gateway, and protoc-gen-openapiv2 required versions. See [here](https://github.com/golang/go/wiki/Modules#how-can-i-track-tool-dependencies-for-a-module).
+
+### Changed
+- Build with Go 1.15.2 release.
+- Update to Protobuf 1.4.2, GRPC 1.32.0, and GRPC-Gateway 2.0.0-beta.5. This enables us to take advantage of the new Protobuf runtime. See [here](https://blog.golang.org/protobuf-apiv2).
+- Replace shell script with Go generate commands to run protoc toolchain.
+- Update protocol definitions to remove warnings from stricter Go package import paths. See [here](https://developers.google.com/protocol-buffers/docs/reference/go-generated#package).
+- Move some Go packages to be internal.
+- Improved rank caching strategy.
+- Separate authentication error response code and message for banned accounts.
+- Pin to an older certs store in the Docker container to work around an issue with GeoTrust certificates.
+
+## [2.13.0] - 2020-08-31
+### Added
+- Add Sign in with Apple authentication, link, and unlink.
+- Wallet operations now return the previous and updated state of the wallet.
+- New multi-update runtime function to handle batched storage, wallet, and account updates in a single transaction.
+- Groups now have a demote API for convenience.
+
+### Changed
+- Build with Go 1.15.0 release.
 - Sanitize metric names and properties fields.
+- Wallet updates now use int64 values to ensure precision in all numeric operations.
+- Update to nakama-common 1.7.3 release.
+- Optimize how session IDs are stored in presence structs.
+- Friend listings now allow a page size of up to 1000 objects.
+
+### Fixed
+- Prevent bad presence list input to dispatcher message broadcasts from causing unexpected errors.
+- Extra HTTP headers in RPC responses are set before the response is written to the buffer.
+- Fix an issue in the Lua runtime nk module's "jwt_generate" function that would prevent it from accepting a key in RS256 format.
+- Fix an issue in the Lua runtime nk module's "rsaSHA256Hash" function that would prevent it from parsing the input private key.
+- Unmatched routes in the Nakama Console server now return a 404 rather than a 401 response.
 
 ## [2.12.0] - 2020-05-25
 ### Added

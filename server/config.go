@@ -15,19 +15,17 @@
 package server
 
 import (
+	"crypto/tls"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
-	"flag"
-	"io/ioutil"
-
-	"github.com/heroiclabs/nakama/v2/flags"
-
-	"crypto/tls"
-
+	"github.com/heroiclabs/nakama/v3/flags"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -48,6 +46,8 @@ type Config interface {
 	GetTracker() *TrackerConfig
 	GetConsole() *ConsoleConfig
 	GetLeaderboard() *LeaderboardConfig
+	GetMatchmaker() *MatchmakerConfig
+	GetIAP() *IAPConfig
 
 	Clone() (Config, error)
 }
@@ -106,6 +106,7 @@ func ParseArgs(logger *zap.Logger, args []string) Config {
 	for k, v := range mainConfig.GetRuntime().Environment {
 		mainConfig.GetRuntime().Env = append(mainConfig.GetRuntime().Env, fmt.Sprintf("%v=%v", k, v))
 	}
+	sort.Strings(mainConfig.GetRuntime().Env)
 
 	return mainConfig
 }
@@ -121,8 +122,20 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 	if config.GetSocket().ServerKey == "" {
 		logger.Fatal("Server key must be set", zap.String("param", "socket.server_key"))
 	}
+	if config.GetSession().TokenExpirySec < 1 {
+		logger.Fatal("Token expiry seconds must be >= 1", zap.String("param", "session.token_expiry_sec"))
+	}
 	if config.GetSession().EncryptionKey == "" {
 		logger.Fatal("Encryption key must be set", zap.String("param", "session.encryption_key"))
+	}
+	if config.GetSession().RefreshEncryptionKey == "" {
+		logger.Fatal("Refresh token encryption key must be set", zap.String("param", "session.refresh_encryption_key"))
+	}
+	if config.GetSession().RefreshTokenExpirySec < 1 {
+		logger.Fatal("Refresh token expiry seconds must be >= 1", zap.String("param", "session.refresh_token_expiry_sec"))
+	}
+	if config.GetSession().EncryptionKey == config.GetSession().RefreshEncryptionKey {
+		logger.Fatal("Encryption key and refresh token encryption cannot match", zap.Strings("param", []string{"session.encryption_key", "session.refresh_encryption_key"}))
 	}
 	if config.GetRuntime().HTTPKey == "" {
 		logger.Fatal("Runtime HTTP key must be set", zap.String("param", "runtime.http_key"))
@@ -154,6 +167,9 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 	if config.GetSocket().MaxMessageSizeBytes < 1 {
 		logger.Fatal("Socket max message size bytes must be >= 1", zap.Int64("socket.max_message_size_bytes", config.GetSocket().MaxMessageSizeBytes))
 	}
+	if config.GetSocket().MaxRequestSizeBytes < 1 {
+		logger.Fatal("Socket max request size bytes must be >= 1", zap.Int64("socket.max_request_size_bytes", config.GetSocket().MaxRequestSizeBytes))
+	}
 	if config.GetSocket().ReadBufferSizeBytes < 1 {
 		logger.Fatal("Socket read buffer size bytes must be >= 1", zap.Int("socket.read_buffer_size_bytes", config.GetSocket().ReadBufferSizeBytes))
 	}
@@ -181,26 +197,35 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 			logger.Fatal("Bad database connection URL", zap.String("database.address", address), zap.Error(err))
 		}
 	}
-	if config.GetRuntime().MinCount < 0 {
-		logger.Fatal("Minimum runtime instance count must be >= 0", zap.Int("runtime.min_count", config.GetRuntime().MinCount))
+	if config.GetRuntime().GetLuaMinCount() < 0 {
+		logger.Fatal("Minimum Lua runtime instance count must be >= 0", zap.Int("runtime.lua_min_count", config.GetRuntime().GetLuaMinCount()))
 	}
-	if config.GetRuntime().MaxCount < 1 {
-		logger.Fatal("Maximum runtime instance count must be >= 1", zap.Int("runtime.max_count", config.GetRuntime().MaxCount))
+	if config.GetRuntime().GetLuaMaxCount() < 1 {
+		logger.Fatal("Maximum Lua runtime instance count must be >= 1", zap.Int("runtime.lua_max_count", config.GetRuntime().GetLuaMinCount()))
 	}
-	if config.GetRuntime().MinCount > config.GetRuntime().MaxCount {
-		logger.Fatal("Minimum runtime instance count must be less than or equal to maximum runtime instance count", zap.Int("runtime.min_count", config.GetRuntime().MinCount), zap.Int("runtime.max_count", config.GetRuntime().MaxCount))
+	if config.GetRuntime().GetLuaMinCount() > config.GetRuntime().GetLuaMaxCount() {
+		logger.Fatal("Minimum Lua runtime instance count must be less than or equal to maximum Lua runtime instance count", zap.Int("runtime.lua_min_count", config.GetRuntime().GetLuaMinCount()), zap.Int("runtime.lua_max_count", config.GetRuntime().GetLuaMaxCount()))
 	}
-	if config.GetRuntime().CallStackSize < 1 {
-		logger.Fatal("Runtime instance call stack size must be >= 1", zap.Int("runtime.call_stack_size", config.GetRuntime().CallStackSize))
+	if config.GetRuntime().GetLuaCallStackSize() < 1 {
+		logger.Fatal("Lua runtime instance call stack size must be >= 1", zap.Int("runtime.lua_call_stack_size", config.GetRuntime().GetLuaCallStackSize()))
+	}
+	if config.GetRuntime().GetLuaRegistrySize() < 128 {
+		logger.Fatal("Lua runtime instance registry size must be >= 128", zap.Int("runtime.registry_size", config.GetRuntime().GetLuaRegistrySize()))
+	}
+	if config.GetRuntime().JsMinCount < 0 {
+		logger.Fatal("Minimum JavaScript runtime instance count must be >= 0", zap.Int("runtime.js_min_count", config.GetRuntime().JsMinCount))
+	}
+	if config.GetRuntime().JsMaxCount < 1 {
+		logger.Fatal("Maximum JavaScript runtime instance count must be >= 1", zap.Int("runtime.js_max_count", config.GetRuntime().JsMinCount))
+	}
+	if config.GetRuntime().JsMinCount > config.GetRuntime().JsMaxCount {
+		logger.Fatal("Minimum JavaScript runtime instance count must be less than or equal to maximum JavaScript runtime instance count", zap.Int("runtime.js_min_count", config.GetRuntime().JsMinCount), zap.Int("runtime.js_max_count", config.GetRuntime().JsMaxCount))
 	}
 	if config.GetRuntime().EventQueueSize < 1 {
 		logger.Fatal("Runtime event queue stack size must be >= 1", zap.Int("runtime.event_queue_size", config.GetRuntime().EventQueueSize))
 	}
 	if config.GetRuntime().EventQueueWorkers < 1 {
 		logger.Fatal("Runtime event queue workers must be >= 1", zap.Int("runtime.event_queue_workers", config.GetRuntime().EventQueueWorkers))
-	}
-	if config.GetRuntime().RegistrySize < 128 {
-		logger.Fatal("Runtime instance registry size must be >= 128", zap.Int("runtime.registry_size", config.GetRuntime().RegistrySize))
 	}
 	if config.GetMatch().InputQueueSize < 1 {
 		logger.Fatal("Match input queue size must be >= 1", zap.Int("match.input_queue_size", config.GetMatch().InputQueueSize))
@@ -220,6 +245,9 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 	if config.GetMatch().MaxEmptySec < 0 {
 		logger.Fatal("Match max idle seconds must be >= 0", zap.Int("match.max_empty_sec", config.GetMatch().MaxEmptySec))
 	}
+	if config.GetMatch().LabelUpdateIntervalMs < 1 {
+		logger.Fatal("Match label update interval milliseconds must be > 0", zap.Int("match.label_update_interval_ms", config.GetMatch().LabelUpdateIntervalMs))
+	}
 	if config.GetTracker().EventQueueSize < 1 {
 		logger.Fatal("Tracker presence event queue size must be >= 1", zap.Int("tracker.event_queue_size", config.GetTracker().EventQueueSize))
 	}
@@ -229,10 +257,34 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 	if config.GetLeaderboard().CallbackQueueWorkers < 1 {
 		logger.Fatal("Leaderboard callback queue workers must be >= 1", zap.Int("leaderboard.callback_queue_workers", config.GetLeaderboard().CallbackQueueWorkers))
 	}
+	if config.GetMatchmaker().MaxTickets < 1 {
+		logger.Fatal("Matchmaker maximum ticket count must be >= 1", zap.Int("matchmaker.max_tickets", config.GetMatchmaker().MaxTickets))
+	}
+	if config.GetMatchmaker().IntervalSec < 1 {
+		logger.Fatal("Matchmaker interval time seconds must be >= 1", zap.Int("matchmaker.interval_sec", config.GetMatchmaker().IntervalSec))
+	}
+	if config.GetMatchmaker().MaxIntervals < 1 {
+		logger.Fatal("Matchmaker max intervals must be >= 1", zap.Int("matchmaker.max_intervals", config.GetMatchmaker().MaxIntervals))
+	}
+	if config.GetMatchmaker().BatchPoolSize < 1 {
+		logger.Fatal("Matchmaker batch pool size must be >= 1", zap.Int("matchmaker.batch_pool_size", config.GetMatchmaker().BatchPoolSize))
+	}
 
 	// If the runtime path is not overridden, set it to `datadir/modules`.
 	if config.GetRuntime().Path == "" {
 		config.GetRuntime().Path = filepath.Join(config.GetDataDir(), "modules")
+	}
+
+	// If JavaScript entrypoint is set, make sure it points to a valid file.
+	if config.GetRuntime().JsEntrypoint != "" {
+		p := filepath.Join(config.GetRuntime().Path, config.GetRuntime().JsEntrypoint)
+		info, err := os.Stat(p)
+		if err != nil {
+			logger.Fatal("JavaScript entrypoint must be a valid path", zap.Error(err))
+		}
+		if filepath.Ext(info.Name()) != ".js" {
+			logger.Fatal("JavaScript entrypoint must point to a .js file", zap.String("runtime.js_entrypoint", p))
+		}
 	}
 
 	configWarnings := make(map[string]string, 8)
@@ -257,6 +309,10 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 	if config.GetSession().EncryptionKey == "defaultencryptionkey" {
 		logger.Warn("WARNING: insecure default parameter value, change this for production!", zap.String("param", "session.encryption_key"))
 		configWarnings["session.encryption_key"] = "Insecure default parameter value, change this for production!"
+	}
+	if config.GetSession().RefreshEncryptionKey == "defaultrefreshencryptionkey" {
+		logger.Warn("WARNING: insecure default parameter value, change this for production!", zap.String("param", "session.refresh_encryption_key"))
+		configWarnings["session.refresh_encryption_key"] = "Insecure default parameter value, change this for production!"
 	}
 	if config.GetRuntime().HTTPKey == "defaulthttpkey" {
 		logger.Warn("WARNING: insecure default parameter value, change this for production!", zap.String("param", "runtime.http_key"))
@@ -290,11 +346,6 @@ func CheckConfig(logger *zap.Logger, config Config) map[string]string {
 		config.GetSocket().CertPEMBlock = certPEMBlock
 		config.GetSocket().KeyPEMBlock = keyPEMBlock
 		config.GetSocket().TLSCert = []tls.Certificate{cert}
-	}
-
-	// Set backwards-compatible defaults if overrides are not used.
-	if config.GetSocket().MaxRequestSizeBytes <= 0 {
-		config.GetSocket().MaxRequestSizeBytes = config.GetSocket().MaxMessageSizeBytes
 	}
 
 	return configWarnings
@@ -337,6 +388,8 @@ type config struct {
 	Tracker          *TrackerConfig     `yaml:"tracker" json:"tracker" usage:"Presence tracker properties."`
 	Console          *ConsoleConfig     `yaml:"console" json:"console" usage:"Console settings."`
 	Leaderboard      *LeaderboardConfig `yaml:"leaderboard" json:"leaderboard" usage:"Leaderboard settings."`
+	Matchmaker       *MatchmakerConfig  `yaml:"matchmaker" json:"matchmaker" usage:"Matchmaker settings."`
+	IAP              *IAPConfig         `yaml:"iap" json:"iap" usage:"In-App Purchase settings."`
 }
 
 // NewConfig constructs a Config struct which represents server settings, and populates it with default values.
@@ -360,6 +413,8 @@ func NewConfig(logger *zap.Logger) *config {
 		Tracker:          NewTrackerConfig(),
 		Console:          NewConsoleConfig(),
 		Leaderboard:      NewLeaderboardConfig(),
+		Matchmaker:       NewMatchmakerConfig(),
+		IAP:              NewIAPConfig(),
 	}
 }
 
@@ -375,6 +430,8 @@ func (c *config) Clone() (Config, error) {
 	configTracker := *(c.Tracker)
 	configConsole := *(c.Console)
 	configLeaderboard := *(c.Leaderboard)
+	configMatchmaker := *(c.Matchmaker)
+	configIAP := *(c.IAP)
 	nc := &config{
 		Name:             c.Name,
 		Datadir:          c.Datadir,
@@ -390,6 +447,8 @@ func (c *config) Clone() (Config, error) {
 		Tracker:          &configTracker,
 		Console:          &configConsole,
 		Leaderboard:      &configLeaderboard,
+		Matchmaker:       &configMatchmaker,
+		IAP:              &configIAP,
 	}
 	nc.Socket.CertPEMBlock = make([]byte, len(c.Socket.CertPEMBlock))
 	copy(nc.Socket.CertPEMBlock, c.Socket.CertPEMBlock)
@@ -472,6 +531,14 @@ func (c *config) GetLeaderboard() *LeaderboardConfig {
 	return c.Leaderboard
 }
 
+func (c *config) GetMatchmaker() *MatchmakerConfig {
+	return c.Matchmaker
+}
+
+func (c *config) GetIAP() *IAPConfig {
+	return c.IAP
+}
+
 // LoggerConfig is configuration relevant to logging levels and output.
 type LoggerConfig struct {
 	Level    string `yaml:"level" json:"level" usage:"Log level to set. Valid values are 'debug', 'info', 'warn', 'error'. Default 'info'."`
@@ -508,6 +575,7 @@ type MetricsConfig struct {
 	ReportingFreqSec int    `yaml:"reporting_freq_sec" json:"reporting_freq_sec" usage:"Frequency of metrics exports. Default is 60 seconds."`
 	Namespace        string `yaml:"namespace" json:"namespace" usage:"Namespace for Prometheus metrics. It will always prepend node name."`
 	PrometheusPort   int    `yaml:"prometheus_port" json:"prometheus_port" usage:"Port to expose Prometheus. If '0' Prometheus exports are disabled."`
+	Prefix           string `yaml:"prefix" json:"prefix" usage:"Prefix for metric names. Default is 'nakama', empty string '' disables the prefix."`
 }
 
 // NewMetricsConfig creates a new MatricsConfig struct.
@@ -516,20 +584,25 @@ func NewMetricsConfig() *MetricsConfig {
 		ReportingFreqSec: 60,
 		Namespace:        "",
 		PrometheusPort:   0,
+		Prefix:           "nakama",
 	}
 }
 
 // SessionConfig is configuration relevant to the session.
 type SessionConfig struct {
-	EncryptionKey  string `yaml:"encryption_key" json:"encryption_key" usage:"The encryption key used to produce the client token."`
-	TokenExpirySec int64  `yaml:"token_expiry_sec" json:"token_expiry_sec" usage:"Token expiry in seconds."`
+	EncryptionKey         string `yaml:"encryption_key" json:"encryption_key" usage:"The encryption key used to produce the client token."`
+	TokenExpirySec        int64  `yaml:"token_expiry_sec" json:"token_expiry_sec" usage:"Token expiry in seconds."`
+	RefreshEncryptionKey  string `yaml:"refresh_encryption_key" json:"refresh_encryption_key" usage:"The encryption key used to produce the client refresh token."`
+	RefreshTokenExpirySec int64  `yaml:"refresh_token_expiry_sec" json:"refresh_token_expiry_sec" usage:"Refresh token expiry in seconds."`
 }
 
 // NewSessionConfig creates a new SessionConfig struct.
 func NewSessionConfig() *SessionConfig {
 	return &SessionConfig{
-		EncryptionKey:  "defaultencryptionkey",
-		TokenExpirySec: 60,
+		EncryptionKey:         "defaultencryptionkey",
+		TokenExpirySec:        60,
+		RefreshEncryptionKey:  "defaultrefreshencryptionkey",
+		RefreshTokenExpirySec: 3600,
 	}
 }
 
@@ -566,7 +639,7 @@ func NewSocketConfig() *SocketConfig {
 		Address:              "",
 		Protocol:             "tcp",
 		MaxMessageSizeBytes:  4096,
-		MaxRequestSizeBytes:  0,
+		MaxRequestSizeBytes:  262_144, // 256 KB.
 		ReadBufferSizeBytes:  4096,
 		WriteBufferSizeBytes: 4096,
 		ReadTimeoutMs:        10 * 1000,
@@ -602,19 +675,31 @@ func NewDatabaseConfig() *DatabaseConfig {
 
 // SocialConfig is configuration relevant to the social authentication providers.
 type SocialConfig struct {
-	Steam               *SocialConfigSteam               `yaml:"steam" json:"steam" usage:"Steam configuration."`
-	FacebookInstantGame *SocialConfigFacebookInstantGame `yaml:"facebook_instant_game" json:"facebook_instant_game" usage:"Facebook Instant Game configuration"`
+	Steam                *SocialConfigSteam                `yaml:"steam" json:"steam" usage:"Steam configuration."`
+	FacebookInstantGame  *SocialConfigFacebookInstantGame  `yaml:"facebook_instant_game" json:"facebook_instant_game" usage:"Facebook Instant Game configuration."`
+	FacebookLimitedLogin *SocialConfigFacebookLimitedLogin `yaml:"facebook_limited_login" json:"facebook_limited_login" usage:"Facebook Limited Login configuration."`
+	Apple                *SocialConfigApple                `yaml:"apple" json:"apple" usage:"Apple Sign In configuration."`
 }
 
-// SocialConfigSteam is configuration relevant to Steam
+// SocialConfigSteam is configuration relevant to Steam.
 type SocialConfigSteam struct {
 	PublisherKey string `yaml:"publisher_key" json:"publisher_key" usage:"Steam Publisher Key value."`
 	AppID        int    `yaml:"app_id" json:"app_id" usage:"Steam App ID."`
 }
 
-// SocialConfigFacebookInstantGame is connfiguration relevant to Facebook Instant Games
+// SocialConfigFacebookInstantGame is configuration relevant to Facebook Instant Games.
 type SocialConfigFacebookInstantGame struct {
-	AppSecret string `yaml:"app_secret" json:"app_secret" usage:"Facebook Instant App Secret"`
+	AppSecret string `yaml:"app_secret" json:"app_secret" usage:"Facebook Instant App secret."`
+}
+
+// SocialConfigFacebookLimitedLogin is configuration relevant to Facebook Limited Login.
+type SocialConfigFacebookLimitedLogin struct {
+	AppId string `yaml:"app_id" json:"app_id" usage:"Facebook Limited Login App ID."`
+}
+
+// SocialConfigApple is configuration relevant to Apple Sign In.
+type SocialConfigApple struct {
+	BundleId string `yaml:"bundle_id" json:"bundle_id" usage:"Apple Sign In bundle ID."`
 }
 
 // NewSocialConfig creates a new SocialConfig struct.
@@ -624,60 +709,122 @@ func NewSocialConfig() *SocialConfig {
 			PublisherKey: "",
 			AppID:        0,
 		},
+		FacebookInstantGame: &SocialConfigFacebookInstantGame{
+			AppSecret: "",
+		},
+		FacebookLimitedLogin: &SocialConfigFacebookLimitedLogin{
+			AppId: "",
+		},
+		Apple: &SocialConfigApple{
+			BundleId: "",
+		},
 	}
 }
 
 // RuntimeConfig is configuration relevant to the Runtime Lua VM.
 type RuntimeConfig struct {
-	Environment       map[string]string `yaml:"-" json:"-"`
-	Env               []string          `yaml:"env" json:"env" usage:"Values to pass into Runtime as environment variables."`
-	Path              string            `yaml:"path" json:"path" usage:"Path for the server to scan for Lua and Go library files."`
-	HTTPKey           string            `yaml:"http_key" json:"http_key" usage:"Runtime HTTP Invocation key."`
-	MinCount          int               `yaml:"min_count" json:"min_count" usage:"Minimum number of runtime instances to allocate. Default 16."`
-	MaxCount          int               `yaml:"max_count" json:"max_count" usage:"Maximum number of runtime instances to allocate. Default 256."`
-	CallStackSize     int               `yaml:"call_stack_size" json:"call_stack_size" usage:"Size of each runtime instance's call stack. Default 128."`
-	RegistrySize      int               `yaml:"registry_size" json:"registry_size" usage:"Size of each runtime instance's registry. Default 512."`
-	EventQueueSize    int               `yaml:"event_queue_size" json:"event_queue_size" usage:"Size of the event queue buffer. Default 65536."`
-	EventQueueWorkers int               `yaml:"event_queue_workers" json:"event_queue_workers" usage:"Number of workers to use for concurrent processing of events. Default 8."`
-	ReadOnlyGlobals   bool              `yaml:"read_only_globals" json:"read_only_globals" usage:"When enabled marks all Lua runtime global tables as read-only to reduce memory footprint. Default true."`
+	Environment        map[string]string `yaml:"-" json:"-"`
+	Env                []string          `yaml:"env" json:"env" usage:"Values to pass into Runtime as environment variables."`
+	Path               string            `yaml:"path" json:"path" usage:"Path for the server to scan for Lua and Go library files."`
+	HTTPKey            string            `yaml:"http_key" json:"http_key" usage:"Runtime HTTP Invocation key."`
+	MinCount           int               `yaml:"min_count" json:"min_count" usage:"Minimum number of Lua runtime instances to allocate. Default 16."` // Kept for backwards compatibility
+	LuaMinCount        int               `yaml:"lua_min_count" json:"lua_min_count" usage:"Minimum number of Lua runtime instances to allocate. Default 16."`
+	MaxCount           int               `yaml:"max_count" json:"max_count" usage:"Maximum number of Lua runtime instances to allocate. Default 48."` // Kept for backwards compatibility
+	LuaMaxCount        int               `yaml:"lua_max_count" json:"lua_max_count" usage:"Maximum number of Lua runtime instances to allocate. Default 48."`
+	JsMinCount         int               `yaml:"js_min_count" json:"js_min_count" usage:"Maximum number of Javascript runtime instances to allocate. Default 48."`
+	JsMaxCount         int               `yaml:"js_max_count" json:"js_max_count" usage:"Maximum number of Javascript runtime instances to allocate. Default 48."`
+	CallStackSize      int               `yaml:"call_stack_size" json:"call_stack_size" usage:"Size of each runtime instance's call stack. Default 128."` // Kept for backwards compatibility
+	LuaCallStackSize   int               `yaml:"lua_call_stack_size" json:"lua_call_stack_size" usage:"Size of each runtime instance's call stack. Default 128."`
+	RegistrySize       int               `yaml:"registry_size" json:"registry_size" usage:"Size of each Lua runtime instance's registry. Default 512."` // Kept for backwards compatibility
+	LuaRegistrySize    int               `yaml:"lua_registry_size" json:"lua_registry_size" usage:"Size of each Lua runtime instance's registry. Default 512."`
+	EventQueueSize     int               `yaml:"event_queue_size" json:"event_queue_size" usage:"Size of the event queue buffer. Default 65536."`
+	EventQueueWorkers  int               `yaml:"event_queue_workers" json:"event_queue_workers" usage:"Number of workers to use for concurrent processing of events. Default 8."`
+	ReadOnlyGlobals    bool              `yaml:"read_only_globals" json:"read_only_globals" usage:"When enabled marks all Lua runtime global tables as read-only to reduce memory footprint. Default true."` // Kept for backwards compatibility
+	LuaReadOnlyGlobals bool              `yaml:"lua_read_only_globals" json:"lua_read_only_globals" usage:"When enabled marks all Lua runtime global tables as read-only to reduce memory footprint. Default true."`
+	JsEntrypoint       string            `yaml:"js_entrypoint" json:"js_entrypoint" usage:"Specifies the location of the bundled JavaScript runtime source code."`
+}
+
+// Function to allow backwards compatibility for MinCount config
+func (r *RuntimeConfig) GetLuaMinCount() int {
+	if r.MinCount != 0 {
+		return r.MinCount
+	}
+	return r.LuaMinCount
+}
+
+// Function to allow backwards compatibility for MaxCount config
+func (r *RuntimeConfig) GetLuaMaxCount() int {
+	if r.MaxCount != 0 {
+		return r.MaxCount
+	}
+	return r.LuaMaxCount
+}
+
+// Function to allow backwards compatibility for CallStackSize config
+func (r *RuntimeConfig) GetLuaCallStackSize() int {
+	if r.CallStackSize != 0 {
+		return r.CallStackSize
+	}
+	return r.LuaCallStackSize
+}
+
+// Function to allow backwards compatibility for RegistrySize config
+func (r *RuntimeConfig) GetLuaRegistrySize() int {
+	if r.RegistrySize != 0 {
+		return r.RegistrySize
+	}
+	return r.LuaRegistrySize
+}
+
+// Function to allow backwards compatibility for LuaReadOnlyGlobals config
+func (r *RuntimeConfig) GetLuaReadOnlyGlobals() bool {
+	if r.ReadOnlyGlobals != true {
+		return r.ReadOnlyGlobals
+	}
+	return r.LuaReadOnlyGlobals
 }
 
 // NewRuntimeConfig creates a new RuntimeConfig struct.
 func NewRuntimeConfig() *RuntimeConfig {
 	return &RuntimeConfig{
-		Environment:       make(map[string]string, 0),
-		Env:               make([]string, 0),
-		Path:              "",
-		HTTPKey:           "defaulthttpkey",
-		MinCount:          16,
-		MaxCount:          256,
-		CallStackSize:     128,
-		RegistrySize:      512,
-		EventQueueSize:    65536,
-		EventQueueWorkers: 8,
-		ReadOnlyGlobals:   true,
+		Environment:        make(map[string]string, 0),
+		Env:                make([]string, 0),
+		Path:               "",
+		HTTPKey:            "defaulthttpkey",
+		LuaMinCount:        16,
+		LuaMaxCount:        48,
+		LuaCallStackSize:   128,
+		LuaRegistrySize:    512,
+		JsMinCount:         16,
+		JsMaxCount:         32,
+		EventQueueSize:     65536,
+		EventQueueWorkers:  8,
+		ReadOnlyGlobals:    true,
+		LuaReadOnlyGlobals: true,
 	}
 }
 
 // MatchConfig is configuration relevant to authoritative realtime multiplayer matches.
 type MatchConfig struct {
-	InputQueueSize       int `yaml:"input_queue_size" json:"input_queue_size" usage:"Size of the authoritative match buffer that stores client messages until they can be processed by the next tick. Default 128."`
-	CallQueueSize        int `yaml:"call_queue_size" json:"call_queue_size" usage:"Size of the authoritative match buffer that sequences calls to match handler callbacks to ensure no overlaps. Default 128."`
-	JoinAttemptQueueSize int `yaml:"join_attempt_queue_size" json:"join_attempt_queue_size" usage:"Size of the authoritative match buffer that limits the number of in-progress join attempts. Default 128."`
-	DeferredQueueSize    int `yaml:"deferred_queue_size" json:"deferred_queue_size" usage:"Size of the authoritative match buffer that holds deferred message broadcasts until the end of each loop execution. Default 128."`
-	JoinMarkerDeadlineMs int `yaml:"join_marker_deadline_ms" json:"join_marker_deadline_ms" usage:"Deadline in milliseconds that client authoritative match joins will wait for match handlers to acknowledge joins. Default 15000."`
-	MaxEmptySec          int `yaml:"max_empty_sec" json:"max_empty_sec" usage:"Maximum number of consecutive seconds that authoritative matches are allowed to be empty before they are stopped. 0 indicates no maximum. Default 0."`
+	InputQueueSize        int `yaml:"input_queue_size" json:"input_queue_size" usage:"Size of the authoritative match buffer that stores client messages until they can be processed by the next tick. Default 128."`
+	CallQueueSize         int `yaml:"call_queue_size" json:"call_queue_size" usage:"Size of the authoritative match buffer that sequences calls to match handler callbacks to ensure no overlaps. Default 128."`
+	JoinAttemptQueueSize  int `yaml:"join_attempt_queue_size" json:"join_attempt_queue_size" usage:"Size of the authoritative match buffer that limits the number of in-progress join attempts. Default 128."`
+	DeferredQueueSize     int `yaml:"deferred_queue_size" json:"deferred_queue_size" usage:"Size of the authoritative match buffer that holds deferred message broadcasts until the end of each loop execution. Default 128."`
+	JoinMarkerDeadlineMs  int `yaml:"join_marker_deadline_ms" json:"join_marker_deadline_ms" usage:"Deadline in milliseconds that client authoritative match joins will wait for match handlers to acknowledge joins. Default 15000."`
+	MaxEmptySec           int `yaml:"max_empty_sec" json:"max_empty_sec" usage:"Maximum number of consecutive seconds that authoritative matches are allowed to be empty before they are stopped. 0 indicates no maximum. Default 0."`
+	LabelUpdateIntervalMs int `yaml:"label_update_interval_ms" json:"label_update_interval_ms" usage:"Time in milliseconds between match label update batch processes. Default 1000."`
 }
 
 // NewMatchConfig creates a new MatchConfig struct.
 func NewMatchConfig() *MatchConfig {
 	return &MatchConfig{
-		InputQueueSize:       128,
-		CallQueueSize:        128,
-		JoinAttemptQueueSize: 128,
-		DeferredQueueSize:    128,
-		JoinMarkerDeadlineMs: 15000,
-		MaxEmptySec:          0,
+		InputQueueSize:        128,
+		CallQueueSize:         128,
+		JoinAttemptQueueSize:  128,
+		DeferredQueueSize:     128,
+		JoinMarkerDeadlineMs:  15000,
+		MaxEmptySec:           0,
+		LabelUpdateIntervalMs: 1000,
 	}
 }
 
@@ -711,7 +858,7 @@ type ConsoleConfig struct {
 func NewConsoleConfig() *ConsoleConfig {
 	return &ConsoleConfig{
 		Port:                7351,
-		MaxMessageSizeBytes: 4096,
+		MaxMessageSizeBytes: 4_194_304, // 4 MB.
 		ReadTimeoutMs:       10 * 1000,
 		WriteTimeoutMs:      60 * 1000,
 		IdleTimeoutMs:       300 * 1000,
@@ -736,4 +883,49 @@ func NewLeaderboardConfig() *LeaderboardConfig {
 		CallbackQueueSize:    65536,
 		CallbackQueueWorkers: 8,
 	}
+}
+
+type MatchmakerConfig struct {
+	MaxTickets    int `yaml:"max_tickets" json:"max_tickets" usage:"Maximum number of concurrent matchmaking tickets allowed per session or party. Default 3."`
+	IntervalSec   int `yaml:"interval_sec" json:"interval_sec" usage:"How quickly the matchmaker attempts to form matches, in seconds. Default 15."`
+	MaxIntervals  int `yaml:"max_intervals" json:"max_intervals" usage:"How many intervals the matchmaker attempts to find matches at the max player count, before allowing min count. Default 2."`
+	BatchPoolSize int `yaml:"batch_pool_size" json:"batch_pool_size" usage:"Number of concurrent indexing batches that will be allocated."`
+}
+
+func NewMatchmakerConfig() *MatchmakerConfig {
+	return &MatchmakerConfig{
+		MaxTickets:    3,
+		IntervalSec:   15,
+		MaxIntervals:  2,
+		BatchPoolSize: 32,
+	}
+}
+
+type IAPConfig struct {
+	Apple  *IAPAppleConfig  `yaml:"apple" json:"apple" usage:"Apple App Store purchase validation configuration."`
+	Google *IAPGoogleConfig `yaml:"google" json:"google" usage:"Google Play Store purchase validation configuration."`
+	Huawei *IAPHuaweiConfig `yaml:"huawei" json:"huawei" usage:"Huawei purchase validation configuration."`
+}
+
+func NewIAPConfig() *IAPConfig {
+	return &IAPConfig{
+		Apple:  &IAPAppleConfig{},
+		Google: &IAPGoogleConfig{},
+		Huawei: &IAPHuaweiConfig{},
+	}
+}
+
+type IAPAppleConfig struct {
+	SharedPassword string `yaml:"shared_password" json:"shared_password" usage:"Your Apple Store App IAP shared password. Only necessary for validation of auto-renewable subscriptions."`
+}
+
+type IAPGoogleConfig struct {
+	ClientEmail string `yaml:"client_email" json:"client_email" usage:"Google Service Account client email."`
+	PrivateKey  string `yaml:"private_key" json:"private_key" usage:"Google Service Account private key."`
+}
+
+type IAPHuaweiConfig struct {
+	PublicKey    string `yaml:"public_key" json:"public_key" usage:"Huawei IAP store Base64 encoded Public Key."`
+	ClientID     string `yaml:"client_id" json:"client_id" usage:"Huawei OAuth client secret."`
+	ClientSecret string `yaml:"client_secret" json:"client_secret" usage:"Huawei OAuth app client secret."`
 }

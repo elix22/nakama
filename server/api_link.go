@@ -17,14 +17,58 @@ package server
 import (
 	"context"
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/heroiclabs/nakama-common/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func (s *ApiServer) LinkCustom(ctx context.Context, in *api.AccountCustom) (*empty.Empty, error) {
+func (s *ApiServer) LinkApple(ctx context.Context, in *api.AccountApple) (*emptypb.Empty, error) {
+	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
+
+	// Before hook.
+	if fn := s.runtime.BeforeLinkApple(); fn != nil {
+		beforeFn := func(clientIP, clientPort string) error {
+			result, err, code := fn(ctx, s.logger, userID.String(), ctx.Value(ctxUsernameKey{}).(string), ctx.Value(ctxVarsKey{}).(map[string]string), ctx.Value(ctxExpiryKey{}).(int64), clientIP, clientPort, in)
+			if err != nil {
+				return status.Error(code, err.Error())
+			}
+			if result == nil {
+				// If result is nil, requested resource is disabled.
+				s.logger.Warn("Intercepted a disabled resource.", zap.Any("resource", ctx.Value(ctxFullMethodKey{}).(string)), zap.String("uid", userID.String()))
+				return status.Error(codes.NotFound, "Requested resource was not found.")
+			}
+			in = result
+			return nil
+		}
+
+		// Execute the before function lambda wrapped in a trace for stats measurement.
+		err := traceApiBefore(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), beforeFn)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err := LinkApple(ctx, s.logger, s.db, s.config, s.socialClient, userID, in.Token)
+	if err != nil {
+		return nil, err
+	}
+
+	// After hook.
+	if fn := s.runtime.AfterLinkApple(); fn != nil {
+		afterFn := func(clientIP, clientPort string) error {
+			return fn(ctx, s.logger, userID.String(), ctx.Value(ctxUsernameKey{}).(string), ctx.Value(ctxVarsKey{}).(map[string]string), ctx.Value(ctxExpiryKey{}).(int64), clientIP, clientPort, in)
+		}
+
+		// Execute the after function lambda wrapped in a trace for stats measurement.
+		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (s *ApiServer) LinkCustom(ctx context.Context, in *api.AccountCustom) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -65,10 +109,10 @@ func (s *ApiServer) LinkCustom(ctx context.Context, in *api.AccountCustom) (*emp
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkDevice(ctx context.Context, in *api.AccountDevice) (*empty.Empty, error) {
+func (s *ApiServer) LinkDevice(ctx context.Context, in *api.AccountDevice) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -109,10 +153,10 @@ func (s *ApiServer) LinkDevice(ctx context.Context, in *api.AccountDevice) (*emp
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkEmail(ctx context.Context, in *api.AccountEmail) (*empty.Empty, error) {
+func (s *ApiServer) LinkEmail(ctx context.Context, in *api.AccountEmail) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -153,10 +197,10 @@ func (s *ApiServer) LinkEmail(ctx context.Context, in *api.AccountEmail) (*empty
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkFacebook(ctx context.Context, in *api.LinkFacebookRequest) (*empty.Empty, error) {
+func (s *ApiServer) LinkFacebook(ctx context.Context, in *api.LinkFacebookRequest) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 	username := ctx.Value(ctxUsernameKey{}).(string)
 
@@ -187,7 +231,7 @@ func (s *ApiServer) LinkFacebook(ctx context.Context, in *api.LinkFacebookReques
 		return nil, status.Error(codes.InvalidArgument, "Facebook access token is required.")
 	}
 
-	err := LinkFacebook(ctx, s.logger, s.db, s.socialClient, s.router, userID, username, in.Account.Token, in.Sync == nil || in.Sync.Value)
+	err := LinkFacebook(ctx, s.logger, s.db, s.socialClient, s.router, userID, username, s.config.GetSocial().FacebookLimitedLogin.AppId, in.Account.Token, in.Sync == nil || in.Sync.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -202,10 +246,10 @@ func (s *ApiServer) LinkFacebook(ctx context.Context, in *api.LinkFacebookReques
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkFacebookInstantGame(ctx context.Context, in *api.AccountFacebookInstantGame) (*empty.Empty, error) {
+func (s *ApiServer) LinkFacebookInstantGame(ctx context.Context, in *api.AccountFacebookInstantGame) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -250,10 +294,10 @@ func (s *ApiServer) LinkFacebookInstantGame(ctx context.Context, in *api.Account
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkGameCenter(ctx context.Context, in *api.AccountGameCenter) (*empty.Empty, error) {
+func (s *ApiServer) LinkGameCenter(ctx context.Context, in *api.AccountGameCenter) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -294,10 +338,10 @@ func (s *ApiServer) LinkGameCenter(ctx context.Context, in *api.AccountGameCente
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkGoogle(ctx context.Context, in *api.AccountGoogle) (*empty.Empty, error) {
+func (s *ApiServer) LinkGoogle(ctx context.Context, in *api.AccountGoogle) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
 
 	// Before hook.
@@ -338,11 +382,12 @@ func (s *ApiServer) LinkGoogle(ctx context.Context, in *api.AccountGoogle) (*emp
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ApiServer) LinkSteam(ctx context.Context, in *api.AccountSteam) (*empty.Empty, error) {
+func (s *ApiServer) LinkSteam(ctx context.Context, in *api.LinkSteamRequest) (*emptypb.Empty, error) {
 	userID := ctx.Value(ctxUserIDKey{}).(uuid.UUID)
+	username := ctx.Value(ctxUsernameKey{}).(string)
 
 	// Before hook.
 	if fn := s.runtime.BeforeLinkSteam(); fn != nil {
@@ -367,7 +412,7 @@ func (s *ApiServer) LinkSteam(ctx context.Context, in *api.AccountSteam) (*empty
 		}
 	}
 
-	err := LinkSteam(ctx, s.logger, s.db, s.config, s.socialClient, userID, in.Token)
+	err := LinkSteam(ctx, s.logger, s.db, s.config, s.socialClient, s.router, userID, username, in.Account.Token, in.Sync == nil || in.Sync.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -382,5 +427,5 @@ func (s *ApiServer) LinkSteam(ctx context.Context, in *api.AccountSteam) (*empty
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }

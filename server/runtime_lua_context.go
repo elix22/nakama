@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/heroiclabs/nakama/v2/internal/gopher-lua"
+	"github.com/heroiclabs/nakama/v3/internal/gopher-lua"
 )
 
 const (
@@ -111,6 +111,16 @@ func RuntimeLuaConvertMap(l *lua.LState, data map[string]interface{}) *lua.LTabl
 	return lt
 }
 
+func RuntimeLuaConvertMapInt64(l *lua.LState, data map[string]int64) *lua.LTable {
+	lt := l.CreateTable(0, len(data))
+
+	for k, v := range data {
+		lt.RawSetString(k, RuntimeLuaConvertValue(l, v))
+	}
+
+	return lt
+}
+
 func RuntimeLuaConvertLuaTable(lv *lua.LTable) map[string]interface{} {
 	returnData, _ := RuntimeLuaConvertLuaValue(lv).(map[string]interface{})
 	return returnData
@@ -154,6 +164,8 @@ func RuntimeLuaConvertValue(l *lua.LState, val interface{}) lua.LValue {
 		return lt
 	case map[string]string:
 		return RuntimeLuaConvertMapString(l, v)
+	case map[string]int64:
+		return RuntimeLuaConvertMapInt64(l, v)
 	case map[string]interface{}:
 		return RuntimeLuaConvertMap(l, v)
 	case []string:
@@ -212,6 +224,8 @@ func RuntimeLuaConvertLuaValue(lv lua.LValue) interface{} {
 			ret = append(ret, RuntimeLuaConvertLuaValue(v.RawGetInt(i)))
 		}
 		return ret
+	case *lua.LFunction:
+		return v.String()
 	default:
 		return v
 	}

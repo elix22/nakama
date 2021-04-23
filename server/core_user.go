@@ -17,11 +17,11 @@ package server
 import (
 	"context"
 	"database/sql"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"strconv"
 	"strings"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/jackc/pgx/pgtype"
 	"go.uber.org/zap"
@@ -30,7 +30,7 @@ import (
 func GetUsers(ctx context.Context, logger *zap.Logger, db *sql.DB, tracker Tracker, ids, usernames, fbIDs []string) (*api.Users, error) {
 	query := `
 SELECT id, username, display_name, avatar_url, lang_tag, location, timezone, metadata,
-	facebook_id, facebook_instant_game_id, google_id, gamecenter_id, steam_id, edge_count, create_time, update_time
+	apple_id, facebook_id, facebook_instant_game_id, google_id, gamecenter_id, steam_id, edge_count, create_time, update_time
 FROM users
 WHERE`
 
@@ -112,37 +112,43 @@ func DeleteUser(ctx context.Context, tx *sql.Tx, userID uuid.UUID) (int64, error
 	return res.RowsAffected()
 }
 
-func BanUsers(ctx context.Context, logger *zap.Logger, db *sql.DB, ids []string) error {
+func BanUsers(ctx context.Context, logger *zap.Logger, db *sql.DB, sessionCache SessionCache, ids []uuid.UUID) error {
 	statements := make([]string, 0, len(ids))
 	params := make([]interface{}, 0, len(ids))
 	for i, id := range ids {
 		statements = append(statements, "$"+strconv.Itoa(i+1))
-		params = append(params, id)
+		params = append(params, id.String())
 	}
 
 	query := "UPDATE users SET disable_time = now() WHERE id IN (" + strings.Join(statements, ", ") + ")"
 	_, err := db.ExecContext(ctx, query, params...)
 	if err != nil {
-		logger.Error("Error banning user accounts.", zap.Error(err), zap.Strings("ids", ids))
+		logger.Error("Error banning user accounts.", zap.Error(err), zap.Any("ids", params))
 		return err
 	}
+
+	sessionCache.Ban(ids)
+
 	return nil
 }
 
-func UnbanUsers(ctx context.Context, logger *zap.Logger, db *sql.DB, ids []string) error {
+func UnbanUsers(ctx context.Context, logger *zap.Logger, db *sql.DB, sessionCache SessionCache, ids []uuid.UUID) error {
 	statements := make([]string, 0, len(ids))
 	params := make([]interface{}, 0, len(ids))
 	for i, id := range ids {
 		statements = append(statements, "$"+strconv.Itoa(i+1))
-		params = append(params, id)
+		params = append(params, id.String())
 	}
 
 	query := "UPDATE users SET disable_time = '1970-01-01 00:00:00 UTC' WHERE id IN (" + strings.Join(statements, ", ") + ")"
 	_, err := db.ExecContext(ctx, query, params...)
 	if err != nil {
-		logger.Error("Error unbanning user accounts.", zap.Error(err), zap.Strings("ids", ids))
+		logger.Error("Error unbanning user accounts.", zap.Error(err), zap.Any("ids", params))
 		return err
 	}
+
+	sessionCache.Unban(ids)
+
 	return nil
 }
 
@@ -168,6 +174,7 @@ func convertUser(tracker Tracker, rows *sql.Rows) (*api.User, error) {
 	var location sql.NullString
 	var timezone sql.NullString
 	var metadata []byte
+	var apple sql.NullString
 	var facebook sql.NullString
 	var facebookInstantGame sql.NullString
 	var google sql.NullString
@@ -178,7 +185,7 @@ func convertUser(tracker Tracker, rows *sql.Rows) (*api.User, error) {
 	var updateTime pgtype.Timestamptz
 
 	err := rows.Scan(&id, &username, &displayName, &avatarURL, &langTag, &location, &timezone, &metadata,
-		&facebook, &facebookInstantGame, &google, &gamecenter, &steam, &edgeCount, &createTime, &updateTime)
+		&apple, &facebook, &facebookInstantGame, &google, &gamecenter, &steam, &edgeCount, &createTime, &updateTime)
 	if err != nil {
 		return nil, err
 	}
@@ -193,20 +200,21 @@ func convertUser(tracker Tracker, rows *sql.Rows) (*api.User, error) {
 		Location:              location.String,
 		Timezone:              timezone.String,
 		Metadata:              string(metadata),
+		AppleId:               apple.String,
 		FacebookId:            facebook.String,
 		FacebookInstantGameId: facebookInstantGame.String,
 		GoogleId:              google.String,
 		GamecenterId:          gamecenter.String,
 		SteamId:               steam.String,
 		EdgeCount:             int32(edgeCount),
-		CreateTime:            &timestamp.Timestamp{Seconds: createTime.Time.Unix()},
-		UpdateTime:            &timestamp.Timestamp{Seconds: updateTime.Time.Unix()},
-		Online:                tracker.StreamExists(PresenceStream{Mode: StreamModeNotifications, Subject: userID}),
+		CreateTime:            &timestamppb.Timestamp{Seconds: createTime.Time.Unix()},
+		UpdateTime:            &timestamppb.Timestamp{Seconds: updateTime.Time.Unix()},
+		Online:                tracker.StreamExists(PresenceStream{Mode: StreamModeStatus, Subject: userID}),
 	}, nil
 }
 
 func fetchUserID(ctx context.Context, db *sql.DB, usernames []string) ([]string, error) {
-	ids := make([]string, 0)
+	ids := make([]string, 0, len(usernames))
 	if len(usernames) == 0 {
 		return ids, nil
 	}

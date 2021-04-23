@@ -20,11 +20,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/gob"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"strconv"
 	"strings"
 
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/heroiclabs/nakama-common/api"
 	"github.com/heroiclabs/nakama-common/rtapi"
 	"github.com/jackc/pgx/pgtype"
@@ -47,7 +47,7 @@ type notificationCacheableCursor struct {
 }
 
 func NotificationSend(ctx context.Context, logger *zap.Logger, db *sql.DB, messageRouter MessageRouter, notifications map[uuid.UUID][]*api.Notification) error {
-	persistentNotifications := make(map[uuid.UUID][]*api.Notification)
+	persistentNotifications := make(map[uuid.UUID][]*api.Notification, len(notifications))
 	for userID, ns := range notifications {
 		for _, userNotification := range ns {
 			// Select persistent notifications for storage.
@@ -108,10 +108,10 @@ ORDER BY create_time ASC, id ASC`+limitQuery, params...)
 		return nil, err
 	}
 
-	notifications := make([]*api.Notification, 0)
+	notifications := make([]*api.Notification, 0, limit)
 	var lastCreateTime int64
 	for rows.Next() {
-		no := &api.Notification{Persistent: true, CreateTime: &timestamp.Timestamp{}}
+		no := &api.Notification{Persistent: true, CreateTime: &timestamppb.Timestamp{}}
 		var createTime pgtype.Timestamptz
 		if err := rows.Scan(&no.Id, &no.Subject, &no.Content, &no.Code, &no.SenderId, &createTime); err != nil {
 			_ = rows.Close()

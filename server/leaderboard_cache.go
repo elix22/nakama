@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/heroiclabs/nakama/v2/cronexpr"
+	"github.com/heroiclabs/nakama/v3/internal/cronexpr"
 	"github.com/jackc/pgx/pgtype"
 	"go.uber.org/zap"
 )
@@ -39,6 +39,7 @@ const (
 	LeaderboardOperatorBest = iota
 	LeaderboardOperatorSet
 	LeaderboardOperatorIncrement
+	LeaderboardOperatorDecrement
 )
 
 type Leaderboard struct {
@@ -190,8 +191,8 @@ FROM leaderboard`
 		return err
 	}
 
-	leaderboards := make(map[string]*Leaderboard)
-	tournamentList := make([]*Leaderboard, 0)
+	leaderboards := make(map[string]*Leaderboard, 10)
+	tournamentList := make([]*Leaderboard, 0, 10)
 
 	for rows.Next() {
 		var id string
@@ -575,11 +576,12 @@ func (l *LocalLeaderboardCache) ListTournaments(now int64, categoryStart, catego
 			// Skip tournaments with start time before filter.
 			continue
 		}
-		if endTime == 0 && leaderboard.EndTime != 0 || (endTime < now && (leaderboard.EndTime > endTime || leaderboard.EndTime == 0)) || leaderboard.EndTime > endTime {
+		if (endTime == 0 && leaderboard.EndTime != 0) || (endTime == -1 && (leaderboard.EndTime != 0 && leaderboard.EndTime < now)) || (endTime > 0 && (leaderboard.EndTime == 0 || leaderboard.EndTime > endTime)) {
+			// if (endTime == 0 && leaderboard.EndTime != 0) || (endTime == -1 && endTime < now) ||leaderboard.EndTime > endTime || leaderboard.EndTime == 0) || leaderboard.EndTime > endTime {
 			// SKIP tournaments where:
 			// - If end time filter is == 0, tournament end time is non-0.
-			// - If end time filter is in the past, tournament end time is after the filter or 0 (never end).
-			// - If end time is in the future, tournament end time is after the filter.
+			// - If end time filter is default (show only ongoing/future tournaments) and tournament has ended.
+			// - If end time filter is set and tournament end time is below it.
 			continue
 		}
 
@@ -621,7 +623,9 @@ func (l *LocalLeaderboardCache) Delete(ctx context.Context, id string) error {
 	if leaderboard.IsTournament() {
 		for i, currentLeaderboard := range l.tournamentList {
 			if currentLeaderboard.Id == id {
-				l.tournamentList = append(l.tournamentList[:i], l.tournamentList[i+1:]...)
+				copy(l.tournamentList[i:], l.tournamentList[i+1:])
+				l.tournamentList[len(l.tournamentList)-1] = nil
+				l.tournamentList = l.tournamentList[:len(l.tournamentList)-1]
 				break
 			}
 		}
@@ -637,7 +641,9 @@ func (l *LocalLeaderboardCache) Remove(id string) {
 		if leaderboard.IsTournament() {
 			for i, currentLeaderboard := range l.tournamentList {
 				if currentLeaderboard.Id == id {
-					l.tournamentList = append(l.tournamentList[:i], l.tournamentList[i+1:]...)
+					copy(l.tournamentList[i:], l.tournamentList[i+1:])
+					l.tournamentList[len(l.tournamentList)-1] = nil
+					l.tournamentList = l.tournamentList[:len(l.tournamentList)-1]
 					break
 				}
 			}

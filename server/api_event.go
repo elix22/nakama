@@ -17,14 +17,14 @@ package server
 import (
 	"context"
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/heroiclabs/nakama-common/api"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func (s *ApiServer) Event(ctx context.Context, in *api.Event) (*empty.Empty, error) {
+func (s *ApiServer) Event(ctx context.Context, in *api.Event) (*emptypb.Empty, error) {
 	// Before hook.
 	if fn := s.runtime.BeforeEvent(); fn != nil {
 		beforeFn := func(clientIP, clientPort string) error {
@@ -53,7 +53,9 @@ func (s *ApiServer) Event(ctx context.Context, in *api.Event) (*empty.Empty, err
 
 	// Add event to processing queue if there are any event handlers registered.
 	if fn := s.runtime.Event(); fn != nil {
-		fn(ctx, in)
+		clientIP, clientPort := extractClientAddressFromContext(s.logger, ctx)
+		evtCtx := NewRuntimeGoContext(ctx, s.config.GetName(), s.config.GetRuntime().Environment, RuntimeExecutionModeEvent, nil, ctx.Value(ctxExpiryKey{}).(int64), ctx.Value(ctxUserIDKey{}).(uuid.UUID).String(), ctx.Value(ctxUsernameKey{}).(string), ctx.Value(ctxVarsKey{}).(map[string]string), "", clientIP, clientPort)
+		fn(evtCtx, in)
 	}
 
 	// After hook.
@@ -66,5 +68,5 @@ func (s *ApiServer) Event(ctx context.Context, in *api.Event) (*empty.Empty, err
 		traceApiAfter(ctx, s.logger, s.metrics, ctx.Value(ctxFullMethodKey{}).(string), afterFn)
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }

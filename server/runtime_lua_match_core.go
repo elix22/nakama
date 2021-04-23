@@ -17,16 +17,20 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/jsonpb"
 	"github.com/heroiclabs/nakama-common/rtapi"
-	"github.com/heroiclabs/nakama/v2/internal/gopher-lua"
-	"github.com/heroiclabs/nakama/v2/social"
+	lua "github.com/heroiclabs/nakama/v3/internal/gopher-lua"
+	"github.com/heroiclabs/nakama/v3/social"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"sync"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type RuntimeLuaMatchCore struct {
@@ -37,12 +41,15 @@ type RuntimeLuaMatchCore struct {
 	deferMessageFn RuntimeMatchDeferMessageFunction
 	presenceList   *MatchPresenceList
 
-	id      uuid.UUID
-	node    string
-	stopped *atomic.Bool
-	idStr   string
-	stream  PresenceStream
-	label   *atomic.String
+	id         uuid.UUID
+	node       string
+	module     string
+	tickRate   int
+	createTime int64
+	stopped    *atomic.Bool
+	idStr      string
+	stream     PresenceStream
+	label      *atomic.String
 
 	vm            *lua.LState
 	initFn        lua.LValue
@@ -57,11 +64,11 @@ type RuntimeLuaMatchCore struct {
 	ctxCancelFn context.CancelFunc
 }
 
-func NewRuntimeLuaMatchCore(logger *zap.Logger, db *sql.DB, jsonpbMarshaler *jsonpb.Marshaler, jsonpbUnmarshaler *jsonpb.Unmarshaler, config Config, socialClient *social.Client, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, leaderboardScheduler LeaderboardScheduler, sessionRegistry SessionRegistry, matchRegistry MatchRegistry, tracker Tracker, streamManager StreamManager, router MessageRouter, stdLibs map[string]lua.LGFunction, once *sync.Once, localCache *RuntimeLuaLocalCache, goMatchCreateFn RuntimeMatchCreateFunction, eventFn RuntimeEventCustomFunction, sharedReg, sharedGlobals *lua.LTable, id uuid.UUID, node string, stopped *atomic.Bool, name string) (RuntimeMatchCore, error) {
+func NewRuntimeLuaMatchCore(logger *zap.Logger, module string, db *sql.DB, protojsonMarshaler *protojson.MarshalOptions, protojsonUnmarshaler *protojson.UnmarshalOptions, config Config, socialClient *social.Client, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, leaderboardScheduler LeaderboardScheduler, sessionRegistry SessionRegistry, sessionCache SessionCache, matchRegistry MatchRegistry, tracker Tracker, streamManager StreamManager, router MessageRouter, stdLibs map[string]lua.LGFunction, once *sync.Once, localCache *RuntimeLuaLocalCache, eventFn RuntimeEventCustomFunction, sharedReg, sharedGlobals *lua.LTable, id uuid.UUID, node string, stopped *atomic.Bool, name string, matchProvider *MatchProvider) (RuntimeMatchCore, error) {
 	// Set up the Lua VM that will handle this match.
 	vm := lua.NewState(lua.Options{
-		CallStackSize:       config.GetRuntime().CallStackSize,
-		RegistrySize:        config.GetRuntime().RegistrySize,
+		CallStackSize:       config.GetRuntime().GetLuaCallStackSize(),
+		RegistrySize:        config.GetRuntime().GetLuaRegistrySize(),
 		SkipOpenLibs:        true,
 		IncludeGoStackTrace: true,
 	})
@@ -87,18 +94,7 @@ func NewRuntimeLuaMatchCore(logger *zap.Logger, db *sql.DB, jsonpbMarshaler *jso
 			vm.Call(1, 0)
 		}
 
-		allMatchCreateFn := func(ctx context.Context, logger *zap.Logger, id uuid.UUID, node string, stopped *atomic.Bool, name string) (RuntimeMatchCore, error) {
-			core, err := goMatchCreateFn(ctx, logger, id, node, stopped, name)
-			if err != nil {
-				return nil, err
-			}
-			if core != nil {
-				return core, nil
-			}
-			return NewRuntimeLuaMatchCore(logger, db, jsonpbMarshaler, jsonpbUnmarshaler, config, socialClient, leaderboardCache, rankCache, leaderboardScheduler, sessionRegistry, matchRegistry, tracker, streamManager, router, stdLibs, once, localCache, goMatchCreateFn, eventFn, nil, nil, id, node, stopped, name)
-		}
-
-		nakamaModule := NewRuntimeLuaNakamaModule(logger, db, jsonpbMarshaler, jsonpbUnmarshaler, config, socialClient, leaderboardCache, rankCache, leaderboardScheduler, sessionRegistry, matchRegistry, tracker, streamManager, router, once, localCache, allMatchCreateFn, eventFn, nil, nil)
+		nakamaModule := NewRuntimeLuaNakamaModule(logger, db, protojsonMarshaler, protojsonUnmarshaler, config, socialClient, leaderboardCache, rankCache, leaderboardScheduler, sessionRegistry, sessionCache, matchRegistry, tracker, streamManager, router, once, localCache, matchProvider.CreateMatch, eventFn, nil, nil)
 		vm.PreloadModule("nakama", nakamaModule.Loader)
 	}
 
@@ -114,18 +110,24 @@ func NewRuntimeLuaMatchCore(logger *zap.Logger, db *sql.DB, jsonpbMarshaler *jso
 	req := vm.GetGlobal("require").(*lua.LFunction)
 	err := vm.GPCall(req.GFunction, lua.LString(name))
 	if err != nil {
+		if apiErr, ok := err.(*lua.ApiError); ok {
+			if strings.Contains(apiErr.Error(), fmt.Sprintf("module %s not found", name)) {
+				// Module not found
+				ctxCancelFn()
+				return nil, nil
+			}
+		}
 		ctxCancelFn()
 		return nil, fmt.Errorf("error loading match module: %v", err.Error())
 	}
 
 	// Extract the expected function references.
-	var tab *lua.LTable
 	t := vm.Get(-1)
 	if t.Type() != lua.LTTable {
 		ctxCancelFn()
 		return nil, errors.New("match module must return a table containing the match callback functions")
 	}
-	tab = t.(*lua.LTable)
+	tab := t.(*lua.LTable)
 	initFn := tab.RawGet(lua.LString("match_init"))
 	if initFn.Type() != lua.LTFunction {
 		ctxCancelFn()
@@ -164,11 +166,14 @@ func NewRuntimeLuaMatchCore(logger *zap.Logger, db *sql.DB, jsonpbMarshaler *jso
 
 		// deferMessageFn set in MatchInit.
 		// presenceList set in MatchInit.
+		// tickRate set in MatchInit.
 
-		id:      id,
-		node:    node,
-		stopped: stopped,
-		idStr:   fmt.Sprintf("%v.%v", id.String(), node),
+		id:         id,
+		node:       node,
+		stopped:    stopped,
+		idStr:      fmt.Sprintf("%v.%v", id.String(), node),
+		module:     module,
+		createTime: time.Now().UTC().UnixNano() / int64(time.Millisecond),
 		stream: PresenceStream{
 			Mode:    StreamModeMatchAuthoritative,
 			Subject: id,
@@ -239,9 +244,10 @@ func (r *RuntimeLuaMatchCore) MatchInit(presenceList *MatchPresenceList, deferMe
 	r.vm.Pop(1)
 
 	rateInt := int(rate.(lua.LNumber))
-	if rateInt > 30 || rateInt < 1 {
-		return nil, 0, errors.New("match_init returned invalid tick rate, must be between 1 and 30")
+	if rateInt > 60 || rateInt < 1 {
+		return nil, 0, errors.New("match_init returned invalid tick rate, must be between 1 and 60")
 	}
+	r.tickRate = rateInt
 
 	// Extract initial state.
 	state := r.vm.Get(-1)
@@ -256,7 +262,7 @@ func (r *RuntimeLuaMatchCore) MatchInit(presenceList *MatchPresenceList, deferMe
 	}
 	r.vm.Pop(1)
 
-	if err := r.matchRegistry.UpdateMatchLabel(r.id, labelStr); err != nil {
+	if err := r.matchRegistry.UpdateMatchLabel(r.id, r.tickRate, r.module, labelStr, r.createTime); err != nil {
 		return nil, 0, err
 	}
 	r.label.Store(labelStr)
@@ -375,11 +381,12 @@ func (r *RuntimeLuaMatchCore) MatchJoin(tick int64, state interface{}, joins []*
 
 	presences := r.vm.CreateTable(len(joins), 0)
 	for i, p := range joins {
-		presence := r.vm.CreateTable(0, 4)
+		presence := r.vm.CreateTable(0, 5)
 		presence.RawSetString("user_id", lua.LString(p.UserID.String()))
 		presence.RawSetString("session_id", lua.LString(p.SessionID.String()))
 		presence.RawSetString("username", lua.LString(p.Username))
 		presence.RawSetString("node", lua.LString(p.Node))
+		presence.RawSetString("reason", lua.LNumber(p.Reason))
 
 		presences.RawSetInt(i+1, presence)
 	}
@@ -416,11 +423,12 @@ func (r *RuntimeLuaMatchCore) MatchJoin(tick int64, state interface{}, joins []*
 func (r *RuntimeLuaMatchCore) MatchLeave(tick int64, state interface{}, leaves []*MatchPresence) (interface{}, error) {
 	presences := r.vm.CreateTable(len(leaves), 0)
 	for i, p := range leaves {
-		presence := r.vm.CreateTable(0, 4)
+		presence := r.vm.CreateTable(0, 5)
 		presence.RawSetString("user_id", lua.LString(p.UserID.String()))
 		presence.RawSetString("session_id", lua.LString(p.SessionID.String()))
 		presence.RawSetString("username", lua.LString(p.Username))
 		presence.RawSetString("node", lua.LString(p.Node))
+		presence.RawSetString("reason", lua.LNumber(p.Reason))
 
 		presences.RawSetInt(i+1, presence)
 	}
@@ -540,8 +548,28 @@ func (r *RuntimeLuaMatchCore) MatchTerminate(tick int64, state interface{}, grac
 	return newState, nil
 }
 
+func (r *RuntimeLuaMatchCore) GetState(state interface{}) (string, error) {
+	stateBytes, err := json.Marshal(RuntimeLuaConvertLuaValue(state.(lua.LValue)))
+	if err != nil {
+		return "", err
+	}
+	return string(stateBytes), nil
+}
+
 func (r *RuntimeLuaMatchCore) Label() string {
 	return r.label.Load()
+}
+
+func (r *RuntimeLuaMatchCore) TickRate() int {
+	return r.tickRate
+}
+
+func (r *RuntimeLuaMatchCore) HandlerName() string {
+	return r.module
+}
+
+func (r *RuntimeLuaMatchCore) CreateTime() int64 {
+	return r.createTime
 }
 
 func (r *RuntimeLuaMatchCore) Cancel() {
@@ -727,26 +755,7 @@ func (r *RuntimeLuaMatchCore) validateBroadcast(l *lua.LState) ([]*PresenceID, *
 				return nil, nil, false
 			}
 		} else {
-			actualPresenceIDs := r.presenceList.ListPresenceIDs()
-			for i := 0; i < len(presenceIDs); i++ {
-				found := false
-				presenceID := presenceIDs[i]
-				for j := 0; j < len(actualPresenceIDs); j++ {
-					if actual := actualPresenceIDs[j]; presenceID.SessionID == actual.SessionID && presenceID.Node == actual.Node {
-						// If it matches, drop it.
-						actualPresenceIDs[j] = actualPresenceIDs[len(actualPresenceIDs)-1]
-						actualPresenceIDs = actualPresenceIDs[:len(actualPresenceIDs)-1]
-						found = true
-						break
-					}
-				}
-				if !found {
-					// If this presence wasn't in the filters, it's not needed.
-					presenceIDs[i] = presenceIDs[len(presenceIDs)-1]
-					presenceIDs = presenceIDs[:len(presenceIDs)-1]
-					i--
-				}
-			}
+			presenceIDs = r.presenceList.FilterPresenceIDs(presenceIDs)
 			if len(presenceIDs) == 0 {
 				// None of the target presenceIDs existed in the list of match members.
 				return nil, nil, false
@@ -850,7 +859,7 @@ func (r *RuntimeLuaMatchCore) matchLabelUpdate(l *lua.LState) int {
 
 	input := l.OptString(1, "")
 
-	if err := r.matchRegistry.UpdateMatchLabel(r.id, input); err != nil {
+	if err := r.matchRegistry.UpdateMatchLabel(r.id, r.tickRate, r.module, input, r.createTime); err != nil {
 		l.RaiseError("error updating match label: %v", err.Error())
 		return 0
 	}

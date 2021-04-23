@@ -17,14 +17,45 @@ package server
 import (
 	"context"
 	"github.com/gofrs/uuid"
-	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/heroiclabs/nakama/v2/console"
+	"github.com/heroiclabs/nakama/v3/console"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func (s *ConsoleServer) UnlinkCustom(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkApple(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
+	userID, err := uuid.FromString(in.Id)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
+	}
+
+	query := `UPDATE users SET apple_id = NULL, update_time = now()
+WHERE id = $1
+AND apple_id IS NOT NULL
+AND ((custom_id IS NOT NULL
+      OR facebook_id IS NOT NULL
+      OR facebook_instant_game_id IS NOT NULL
+      OR google_id IS NOT NULL
+      OR gamecenter_id IS NOT NULL
+      OR steam_id IS NOT NULL
+      OR email IS NOT NULL)
+     OR
+     EXISTS (SELECT id FROM user_device WHERE user_id = $1 LIMIT 1))`
+
+	res, err := s.db.ExecContext(ctx, query, userID)
+
+	if err != nil {
+		s.logger.Error("Could not unlink Apple ID.", zap.Error(err), zap.Any("input", in))
+		return nil, status.Error(codes.Internal, "Error while trying to unlink Apple ID.")
+	} else if count, _ := res.RowsAffected(); count == 0 {
+		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Apple ID when there are no other identifiers.")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (s *ConsoleServer) UnlinkCustom(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -33,7 +64,8 @@ func (s *ConsoleServer) UnlinkCustom(ctx context.Context, in *console.AccountId)
 	query := `UPDATE users SET custom_id = NULL, update_time = now()
 WHERE id = $1
 AND custom_id IS NOT NULL
-AND ((facebook_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR facebook_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
       OR google_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
@@ -51,10 +83,10 @@ AND ((facebook_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink custom ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkDevice(ctx context.Context, in *console.UnlinkDeviceRequest) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkDevice(ctx context.Context, in *console.UnlinkDeviceRequest) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -72,7 +104,8 @@ func (s *ConsoleServer) UnlinkDevice(ctx context.Context, in *console.UnlinkDevi
 	err = ExecuteInTx(ctx, tx, func() error {
 		query := `DELETE FROM user_device WHERE id = $2 AND user_id = $1
 AND (EXISTS (SELECT id FROM users WHERE id = $1 AND
-    (facebook_id IS NOT NULL
+    (apple_id IS NOT NULL
+     OR facebook_id IS NOT NULL
      OR facebook_instant_game_id IS NOT NULL
      OR google_id IS NOT NULL
      OR gamecenter_id IS NOT NULL
@@ -110,10 +143,10 @@ AND (EXISTS (SELECT id FROM users WHERE id = $1 AND
 		return nil, status.Error(codes.Internal, "Could not unlink device ID.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkEmail(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkEmail(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -122,7 +155,8 @@ func (s *ConsoleServer) UnlinkEmail(ctx context.Context, in *console.AccountId) 
 	query := `UPDATE users SET email = NULL, password = NULL, update_time = now()
 WHERE id = $1
 AND email IS NOT NULL
-AND ((facebook_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR facebook_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
       OR google_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
@@ -140,10 +174,10 @@ AND ((facebook_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink email address when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkFacebook(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkFacebook(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -152,7 +186,8 @@ func (s *ConsoleServer) UnlinkFacebook(ctx context.Context, in *console.AccountI
 	query := `UPDATE users SET facebook_id = NULL, update_time = now()
 WHERE id = $1
 AND facebook_id IS NOT NULL
-AND ((custom_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR custom_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
       OR google_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
@@ -170,10 +205,10 @@ AND ((custom_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Facebook ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkFacebookInstantGame(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkFacebookInstantGame(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -182,7 +217,8 @@ func (s *ConsoleServer) UnlinkFacebookInstantGame(ctx context.Context, in *conso
 	query := `UPDATE users SET facebook_instant_game_id = NULL, update_time = now()
 WHERE id = $1
 AND facebook_instant_game_id IS NOT NULL
-AND ((custom_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR custom_id IS NOT NULL
       OR facebook_id IS NOT NULL
       OR google_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
@@ -200,10 +236,10 @@ AND ((custom_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Facebook ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkGameCenter(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkGameCenter(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -212,7 +248,8 @@ func (s *ConsoleServer) UnlinkGameCenter(ctx context.Context, in *console.Accoun
 	query := `UPDATE users SET gamecenter_id = NULL, update_time = now()
 WHERE id = $1
 AND gamecenter_id IS NOT NULL
-AND ((custom_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR custom_id IS NOT NULL
       OR google_id IS NOT NULL
       OR facebook_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
@@ -230,10 +267,10 @@ AND ((custom_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Game Center ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkGoogle(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkGoogle(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -242,7 +279,8 @@ func (s *ConsoleServer) UnlinkGoogle(ctx context.Context, in *console.AccountId)
 	query := `UPDATE users SET google_id = NULL, update_time = now()
 WHERE id = $1
 AND google_id IS NOT NULL
-AND ((custom_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR custom_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
       OR facebook_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
@@ -260,10 +298,10 @@ AND ((custom_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Google ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (s *ConsoleServer) UnlinkSteam(ctx context.Context, in *console.AccountId) (*empty.Empty, error) {
+func (s *ConsoleServer) UnlinkSteam(ctx context.Context, in *console.AccountId) (*emptypb.Empty, error) {
 	userID, err := uuid.FromString(in.Id)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "Requires a valid user ID.")
@@ -272,7 +310,8 @@ func (s *ConsoleServer) UnlinkSteam(ctx context.Context, in *console.AccountId) 
 	query := `UPDATE users SET steam_id = NULL, update_time = now()
 WHERE id = $1
 AND steam_id IS NOT NULL
-AND ((custom_id IS NOT NULL
+AND ((apple_id IS NOT NULL
+      OR custom_id IS NOT NULL
       OR gamecenter_id IS NOT NULL
       OR facebook_id IS NOT NULL
       OR facebook_instant_game_id IS NOT NULL
@@ -290,5 +329,5 @@ AND ((custom_id IS NOT NULL
 		return nil, status.Error(codes.PermissionDenied, "Cannot unlink Steam ID when there are no other identifiers.")
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }
