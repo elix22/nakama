@@ -35,8 +35,14 @@ func (p *Pipeline) partyCreate(logger *zap.Logger, session Session, envelope *rt
 		return
 	}
 
+	presence := &rtapi.UserPresence{
+		UserId:    session.UserID().String(),
+		SessionId: session.ID().String(),
+		Username:  session.Username(),
+	}
+
 	// Handle through the party registry.
-	ph := p.partyRegistry.Create(incoming.Open, int(incoming.MaxSize))
+	ph := p.partyRegistry.Create(incoming.Open, int(incoming.MaxSize), presence)
 	if ph == nil {
 		session.Send(&rtapi.Envelope{Cid: envelope.Cid, Message: &rtapi.Envelope_Error{Error: &rtapi.Error{
 			Code:    int32(rtapi.Error_RUNTIME_EXCEPTION),
@@ -59,7 +65,14 @@ func (p *Pipeline) partyCreate(logger *zap.Logger, session Session, envelope *rt
 		return
 	}
 
-	session.Send(&rtapi.Envelope{Cid: envelope.Cid}, true)
+	session.Send(&rtapi.Envelope{Cid: envelope.Cid, Message: &rtapi.Envelope_Party{Party: &rtapi.Party{
+		PartyId:   ph.IDStr,
+		Open:      incoming.Open,
+		MaxSize:   incoming.MaxSize,
+		Self:      presence,
+		Leader:    presence,
+		Presences: []*rtapi.UserPresence{presence},
+	}}}, true)
 }
 
 func (p *Pipeline) partyJoin(logger *zap.Logger, session Session, envelope *rtapi.Envelope) {
@@ -405,7 +418,7 @@ func (p *Pipeline) partyMatchmakerAdd(logger *zap.Logger, session Session, envel
 	node := partyIDComponents[1]
 
 	// Handle through the party registry.
-	ticket, err := p.partyRegistry.PartyMatchmakerAdd(session.Context(), partyID, node, session.ID().String(), p.node, query, minCount, maxCount, incoming.StringProperties, incoming.NumericProperties)
+	ticket, memberPresenceIDs, err := p.partyRegistry.PartyMatchmakerAdd(session.Context(), partyID, node, session.ID().String(), p.node, query, minCount, maxCount, incoming.StringProperties, incoming.NumericProperties)
 	if err != nil {
 		session.Send(&rtapi.Envelope{Cid: envelope.Cid, Message: &rtapi.Envelope_Error{Error: &rtapi.Error{
 			Code:    int32(rtapi.Error_BAD_INPUT),
@@ -414,18 +427,24 @@ func (p *Pipeline) partyMatchmakerAdd(logger *zap.Logger, session Session, envel
 		return
 	}
 
-	session.Send(&rtapi.Envelope{Cid: envelope.Cid}, true)
+	// Return the ticket to the party leader.
+	session.Send(&rtapi.Envelope{Cid: envelope.Cid, Message: &rtapi.Envelope_PartyMatchmakerTicket{PartyMatchmakerTicket: &rtapi.PartyMatchmakerTicket{
+		PartyId: incoming.PartyId,
+		Ticket:  ticket,
+	}}}, true)
 
-	// Return the ticket.
-	outgoing := &rtapi.Envelope{
-		Message: &rtapi.Envelope_PartyMatchmakerTicket{
-			PartyMatchmakerTicket: &rtapi.PartyMatchmakerTicket{
-				PartyId: incoming.PartyId,
-				Ticket:  ticket,
+	if len(memberPresenceIDs) != 0 {
+		// Notify all other party members.
+		outgoing := &rtapi.Envelope{
+			Message: &rtapi.Envelope_PartyMatchmakerTicket{
+				PartyMatchmakerTicket: &rtapi.PartyMatchmakerTicket{
+					PartyId: incoming.PartyId,
+					Ticket:  ticket,
+				},
 			},
-		},
+		}
+		p.router.SendToPresenceIDs(p.logger, memberPresenceIDs, outgoing, true)
 	}
-	p.router.SendToStream(p.logger, PresenceStream{Mode: StreamModeParty, Subject: partyID, Label: node}, outgoing, true)
 }
 
 func (p *Pipeline) partyMatchmakerRemove(logger *zap.Logger, session Session, envelope *rtapi.Envelope) {

@@ -27,7 +27,7 @@ import (
 var ErrPartyNotFound = errors.New("party not found")
 
 type PartyRegistry interface {
-	Create(open bool, maxSize int) *PartyHandler
+	Create(open bool, maxSize int, leader *rtapi.UserPresence) *PartyHandler
 	Delete(id uuid.UUID)
 
 	Join(id uuid.UUID, presences []*Presence)
@@ -39,7 +39,7 @@ type PartyRegistry interface {
 	PartyRemove(ctx context.Context, id uuid.UUID, node, sessionID, fromNode string, presence *rtapi.UserPresence) error
 	PartyClose(ctx context.Context, id uuid.UUID, node, sessionID, fromNode string) error
 	PartyJoinRequestList(ctx context.Context, id uuid.UUID, node, sessionID, fromNode string) ([]*rtapi.UserPresence, error)
-	PartyMatchmakerAdd(ctx context.Context, id uuid.UUID, node, sessionID, fromNode, query string, minCount, maxCount int, stringProperties map[string]string, numericProperties map[string]float64) (string, error)
+	PartyMatchmakerAdd(ctx context.Context, id uuid.UUID, node, sessionID, fromNode, query string, minCount, maxCount int, stringProperties map[string]string, numericProperties map[string]float64) (string, []*PresenceID, error)
 	PartyMatchmakerRemove(ctx context.Context, id uuid.UUID, node, sessionID, fromNode, ticket string) error
 	PartyDataSend(ctx context.Context, id uuid.UUID, node, sessionID, fromNode string, opCode int64, data []byte) error
 }
@@ -68,9 +68,9 @@ func NewLocalPartyRegistry(logger *zap.Logger, matchmaker Matchmaker, tracker Tr
 	}
 }
 
-func (p *LocalPartyRegistry) Create(open bool, maxSize int) *PartyHandler {
+func (p *LocalPartyRegistry) Create(open bool, maxSize int, presence *rtapi.UserPresence) *PartyHandler {
 	id := uuid.Must(uuid.NewV4())
-	partyHandler := NewPartyHandler(p.logger, p, p.matchmaker, p.tracker, p.streamManager, p.router, id, p.node, open, maxSize)
+	partyHandler := NewPartyHandler(p.logger, p, p.matchmaker, p.tracker, p.streamManager, p.router, id, p.node, open, maxSize, presence)
 
 	p.parties.Store(id, partyHandler)
 
@@ -175,14 +175,14 @@ func (p *LocalPartyRegistry) PartyJoinRequestList(ctx context.Context, id uuid.U
 	return ph.(*PartyHandler).JoinRequestList(sessionID, fromNode)
 }
 
-func (p *LocalPartyRegistry) PartyMatchmakerAdd(ctx context.Context, id uuid.UUID, node, sessionID, fromNode, query string, minCount, maxCount int, stringProperties map[string]string, numericProperties map[string]float64) (string, error) {
+func (p *LocalPartyRegistry) PartyMatchmakerAdd(ctx context.Context, id uuid.UUID, node, sessionID, fromNode, query string, minCount, maxCount int, stringProperties map[string]string, numericProperties map[string]float64) (string, []*PresenceID, error) {
 	if node != p.node {
-		return "", ErrPartyNotFound
+		return "", nil, ErrPartyNotFound
 	}
 
 	ph, found := p.parties.Load(id)
 	if !found {
-		return "", ErrPartyNotFound
+		return "", nil, ErrPartyNotFound
 	}
 
 	return ph.(*PartyHandler).MatchmakerAdd(sessionID, fromNode, query, minCount, maxCount, stringProperties, numericProperties)

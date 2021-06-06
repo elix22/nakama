@@ -69,9 +69,7 @@ type RuntimeJavaScriptMatchCore struct {
 func NewRuntimeJavascriptMatchCore(logger *zap.Logger, module string, db *sql.DB, protojsonMarshaler *protojson.MarshalOptions, protojsonUnmarshaler *protojson.UnmarshalOptions, config Config, socialClient *social.Client, leaderboardCache LeaderboardCache, rankCache LeaderboardRankCache, localCache *RuntimeJavascriptLocalCache, leaderboardScheduler LeaderboardScheduler, sessionRegistry SessionRegistry, sessionCache SessionCache, matchRegistry MatchRegistry, tracker Tracker, streamManager StreamManager, router MessageRouter, matchCreateFn RuntimeMatchCreateFunction, eventFn RuntimeEventCustomFunction, id uuid.UUID, node string, stopped *atomic.Bool, matchHandlers *jsMatchHandlers, modCache *RuntimeJSModuleCache) (RuntimeMatchCore, error) {
 	runtime := goja.New()
 
-	jsLogger := NewJsLogger(logger)
-	jsLoggerValue := runtime.ToValue(jsLogger.Constructor(runtime))
-	jsLoggerInst, err := runtime.New(jsLoggerValue)
+	jsLoggerInst, err := NewJsLogger(runtime, logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize JavaScript runtime", zap.Error(err))
 	}
@@ -256,6 +254,7 @@ func (rm *RuntimeJavaScriptMatchCore) MatchJoinAttempt(tick int64, state interfa
 		ctxObj.Set(__RUNTIME_JAVASCRIPT_CTX_CLIENT_PORT, clientPort)
 	}
 
+	pointerizeSlices(state)
 	args := []goja.Value{ctxObj, rm.loggerModule, rm.nakamaModule, rm.dispatcher, rm.vm.ToValue(tick), rm.vm.ToValue(state), presenceObj, rm.vm.ToValue(metadata)}
 	retVal, err := rm.joinAttemptFn(goja.Null(), args...)
 	if err != nil {
@@ -302,16 +301,17 @@ func (rm *RuntimeJavaScriptMatchCore) MatchJoinAttempt(tick int64, state interfa
 func (rm *RuntimeJavaScriptMatchCore) MatchJoin(tick int64, state interface{}, joins []*MatchPresence) (interface{}, error) {
 	presences := make([]interface{}, 0, len(joins))
 	for _, p := range joins {
-		presenceObj := rm.vm.NewObject()
-		presenceObj.Set("userId", p.UserID.String())
-		presenceObj.Set("sessionId", p.SessionID.String())
-		presenceObj.Set("username", p.Username)
-		presenceObj.Set("node", p.Node)
-		presenceObj.Set("reason", p.Reason)
+		presenceMap := make(map[string]interface{}, 5)
+		presenceMap["userId"] = p.UserID.String()
+		presenceMap["sessionId"] = p.SessionID.String()
+		presenceMap["username"] = p.Username
+		presenceMap["node"] = p.Node
+		presenceMap["reason"] = p.Reason
 
-		presences = append(presences, presenceObj)
+		presences = append(presences, presenceMap)
 	}
 
+	pointerizeSlices(state)
 	args := []goja.Value{rm.ctx, rm.loggerModule, rm.nakamaModule, rm.dispatcher, rm.vm.ToValue(tick), rm.vm.ToValue(state), rm.vm.ToValue(presences)}
 	retVal, err := rm.joinFn(goja.Null(), args...)
 	if err != nil {
@@ -338,16 +338,17 @@ func (rm *RuntimeJavaScriptMatchCore) MatchJoin(tick int64, state interface{}, j
 func (rm *RuntimeJavaScriptMatchCore) MatchLeave(tick int64, state interface{}, leaves []*MatchPresence) (interface{}, error) {
 	presences := make([]interface{}, 0, len(leaves))
 	for _, p := range leaves {
-		presenceObj := rm.vm.NewObject()
-		presenceObj.Set("userId", p.UserID.String())
-		presenceObj.Set("sessionId", p.SessionID.String())
-		presenceObj.Set("username", p.Username)
-		presenceObj.Set("node", p.Node)
-		presenceObj.Set("reason", p.Reason)
+		presenceMap := make(map[string]interface{}, 5)
+		presenceMap["userId"] = p.UserID.String()
+		presenceMap["sessionId"] = p.SessionID.String()
+		presenceMap["username"] = p.Username
+		presenceMap["node"] = p.Node
+		presenceMap["reason"] = p.Reason
 
-		presences = append(presences, presenceObj)
+		presences = append(presences, presenceMap)
 	}
 
+	pointerizeSlices(state)
 	args := []goja.Value{rm.ctx, rm.loggerModule, rm.nakamaModule, rm.dispatcher, rm.vm.ToValue(tick), rm.vm.ToValue(state), rm.vm.ToValue(presences)}
 	retVal, err := rm.leaveFn(goja.Null(), args...)
 	if err != nil {
@@ -377,26 +378,27 @@ func (rm *RuntimeJavaScriptMatchCore) MatchLoop(tick int64, state interface{}, i
 	for i := 0; i < size; i++ {
 		msg := <-inputCh
 
-		presenceObj := rm.vm.NewObject()
-		presenceObj.Set("userId", msg.UserID.String())
-		presenceObj.Set("sessionId", msg.SessionID.String())
-		presenceObj.Set("username", msg.Username)
-		presenceObj.Set("node", msg.Node)
+		presenceMap := make(map[string]interface{}, 5)
+		presenceMap["userId"] = msg.UserID.String()
+		presenceMap["sessionId"] = msg.SessionID.String()
+		presenceMap["username"] = msg.Username
+		presenceMap["node"] = msg.Node
 
-		msgObj := rm.vm.NewObject()
-		msgObj.Set("sender", presenceObj)
-		msgObj.Set("opCode", msg.OpCode)
+		msgMap := make(map[string]interface{}, 5)
+		msgMap["sender"] = presenceMap
+		msgMap["opCode"] = msg.OpCode
 		if msg.Data != nil {
-			msgObj.Set("data", string(msg.Data))
+			msgMap["data"] = string(msg.Data)
 		} else {
-			msgObj.Set("data", goja.Null())
+			msgMap["data"] = goja.Null()
 		}
-		msgObj.Set("reliable", msg.Reliable)
-		msgObj.Set("receiveTimeMs", msg.ReceiveTime)
+		msgMap["reliable"] = msg.Reliable
+		msgMap["receiveTimeMs"] = msg.ReceiveTime
 
-		inputs = append(inputs, msgObj)
+		inputs = append(inputs, msgMap)
 	}
 
+	pointerizeSlices(state)
 	args := []goja.Value{rm.ctx, rm.loggerModule, rm.nakamaModule, rm.dispatcher, rm.vm.ToValue(tick), rm.vm.ToValue(state), rm.vm.ToValue(inputs)}
 	retVal, err := rm.loopFn(goja.Null(), args...)
 	if err != nil {
@@ -425,6 +427,7 @@ func (rm *RuntimeJavaScriptMatchCore) MatchLoop(tick int64, state interface{}, i
 }
 
 func (rm *RuntimeJavaScriptMatchCore) MatchTerminate(tick int64, state interface{}, graceSeconds int) (interface{}, error) {
+	pointerizeSlices(state)
 	args := []goja.Value{rm.ctx, rm.loggerModule, rm.nakamaModule, rm.dispatcher, rm.vm.ToValue(tick), rm.vm.ToValue(state), rm.vm.ToValue(graceSeconds)}
 	retVal, err := rm.terminateFn(goja.Null(), args...)
 	if err != nil {
@@ -449,7 +452,7 @@ func (rm *RuntimeJavaScriptMatchCore) MatchTerminate(tick int64, state interface
 }
 
 func (rm *RuntimeJavaScriptMatchCore) GetState(state interface{}) (string, error) {
-	stateBytes, err := json.Marshal(state)
+	stateBytes, err := json.Marshal(RuntimeJsConvertJsValue(state))
 	if err != nil {
 		return "", err
 	}

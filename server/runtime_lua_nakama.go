@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/heroiclabs/nakama-common/runtime"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	"io"
@@ -53,6 +54,8 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type ctxLoggerFields struct{}
 
 type RuntimeLuaNakamaModule struct {
 	logger               *zap.Logger
@@ -1728,7 +1731,22 @@ func (n *RuntimeLuaNakamaModule) loggerDebug(l *lua.LState) int {
 		l.ArgError(1, "expects message string")
 		return 0
 	}
-	n.logger.Debug(message, zap.String("runtime", "lua"))
+
+	ctxLogFields := l.Context().Value(ctxLoggerFields{})
+	if ctxLogFields != nil {
+		logFields, ok := ctxLogFields.(map[string]string)
+		if ok {
+			fields := make([]zap.Field, 0, len(logFields)+1)
+			fields = append(fields, zap.String("runtime", "lua"))
+			for key, val := range logFields {
+				fields = append(fields, zap.String(key, val))
+			}
+			n.logger.Debug(message, fields...)
+		}
+	} else {
+		n.logger.Debug(message, zap.String("runtime", "lua"))
+	}
+
 	l.Push(lua.LString(message))
 	return 1
 }
@@ -1739,7 +1757,22 @@ func (n *RuntimeLuaNakamaModule) loggerInfo(l *lua.LState) int {
 		l.ArgError(1, "expects message string")
 		return 0
 	}
-	n.logger.Info(message, zap.String("runtime", "lua"))
+
+	ctxLogFields := l.Context().Value(ctxLoggerFields{})
+	if ctxLogFields != nil {
+		logFields, ok := ctxLogFields.(map[string]string)
+		if ok {
+			fields := make([]zap.Field, 0, len(logFields)+1)
+			fields = append(fields, zap.String("runtime", "lua"))
+			for key, val := range logFields {
+				fields = append(fields, zap.String(key, val))
+			}
+			n.logger.Debug(message, fields...)
+		}
+	} else {
+		n.logger.Info(message, zap.String("runtime", "lua"))
+	}
+
 	l.Push(lua.LString(message))
 	return 1
 }
@@ -1750,7 +1783,22 @@ func (n *RuntimeLuaNakamaModule) loggerWarn(l *lua.LState) int {
 		l.ArgError(1, "expects message string")
 		return 0
 	}
-	n.logger.Warn(message, zap.String("runtime", "lua"))
+
+	ctxLogFields := l.Context().Value(ctxLoggerFields{})
+	if ctxLogFields != nil {
+		logFields, ok := ctxLogFields.(map[string]string)
+		if ok {
+			fields := make([]zap.Field, 0, len(logFields)+1)
+			fields = append(fields, zap.String("runtime", "lua"))
+			for key, val := range logFields {
+				fields = append(fields, zap.String(key, val))
+			}
+			n.logger.Debug(message, fields...)
+		}
+	} else {
+		n.logger.Warn(message, zap.String("runtime", "lua"))
+	}
+
 	l.Push(lua.LString(message))
 	return 1
 }
@@ -1761,7 +1809,22 @@ func (n *RuntimeLuaNakamaModule) loggerError(l *lua.LState) int {
 		l.ArgError(1, "expects message string")
 		return 0
 	}
-	n.logger.Error(message, zap.String("runtime", "lua"), zap.String("source", n.getLuaModule(l)))
+
+	ctxLogFields := l.Context().Value(ctxLoggerFields{})
+	if ctxLogFields != nil {
+		logFields, ok := ctxLogFields.(map[string]string)
+		if ok {
+			fields := make([]zap.Field, 0, len(logFields)+1)
+			fields = append(fields, zap.String("runtime", "lua"))
+			for key, val := range logFields {
+				fields = append(fields, zap.String(key, val))
+			}
+			n.logger.Debug(message, fields...)
+		}
+	} else {
+		n.logger.Error(message, zap.String("runtime", "lua"), zap.String("source", n.getLuaModule(l)))
+	}
+
 	l.Push(lua.LString(message))
 	return 1
 }
@@ -3764,7 +3827,17 @@ func (n *RuntimeLuaNakamaModule) sessionDisconnect(l *lua.LState) int {
 		return 0
 	}
 
-	if err := n.sessionRegistry.Disconnect(l.Context(), sessionID); err != nil {
+	reason := make([]runtime.PresenceReason, 0, 1)
+	reasonInt := l.OptInt64(2, 0)
+	if reasonInt != 0 {
+		if reasonInt < 0 || reasonInt > 4 {
+			l.ArgError(2, "invalid disconnect reason, must be a value 0-4")
+			return 0
+		}
+		reason = append(reason, runtime.PresenceReason(reasonInt))
+	}
+
+	if err := n.sessionRegistry.Disconnect(l.Context(), sessionID, reason...); err != nil {
 		l.RaiseError(fmt.Sprintf("failed to disconnect: %s", err.Error()))
 	}
 	return 0
@@ -6728,7 +6801,17 @@ func (n *RuntimeLuaNakamaModule) groupUsersAdd(l *lua.LState) int {
 		return 0
 	}
 
-	if err := AddGroupUsers(l.Context(), n.logger, n.db, n.router, uuid.Nil, groupID, userIDs); err != nil {
+	callerID := uuid.Nil
+	callerIDStr := l.OptString(3, "")
+	if callerIDStr != "" {
+		callerID, err = uuid.FromString(callerIDStr)
+		if err != nil {
+			l.ArgError(1, "expects caller ID to be a valid identifier")
+			return 0
+		}
+	}
+
+	if err := AddGroupUsers(l.Context(), n.logger, n.db, n.router, callerID, groupID, userIDs); err != nil {
 		l.RaiseError("error while trying to add users into a group: %v", err.Error())
 	}
 	return 0
@@ -6776,7 +6859,17 @@ func (n *RuntimeLuaNakamaModule) groupUsersPromote(l *lua.LState) int {
 		return 0
 	}
 
-	if err := PromoteGroupUsers(l.Context(), n.logger, n.db, n.router, uuid.Nil, groupID, userIDs); err != nil {
+	callerID := uuid.Nil
+	callerIDStr := l.OptString(3, "")
+	if callerIDStr != "" {
+		callerID, err = uuid.FromString(callerIDStr)
+		if err != nil {
+			l.ArgError(1, "expects caller ID to be a valid identifier")
+			return 0
+		}
+	}
+
+	if err := PromoteGroupUsers(l.Context(), n.logger, n.db, n.router, callerID, groupID, userIDs); err != nil {
 		l.RaiseError("error while trying to promote users in a group: %v", err.Error())
 	}
 	return 0
@@ -6824,7 +6917,17 @@ func (n *RuntimeLuaNakamaModule) groupUsersDemote(l *lua.LState) int {
 		return 0
 	}
 
-	if err := DemoteGroupUsers(l.Context(), n.logger, n.db, n.router, uuid.Nil, groupID, userIDs); err != nil {
+	callerID := uuid.Nil
+	callerIDStr := l.OptString(3, "")
+	if callerIDStr != "" {
+		callerID, err = uuid.FromString(callerIDStr)
+		if err != nil {
+			l.ArgError(1, "expects caller ID to be a valid identifier")
+			return 0
+		}
+	}
+
+	if err := DemoteGroupUsers(l.Context(), n.logger, n.db, n.router, callerID, groupID, userIDs); err != nil {
 		l.RaiseError("error while trying to demote users in a group: %v", err.Error())
 	}
 	return 0
@@ -6872,7 +6975,17 @@ func (n *RuntimeLuaNakamaModule) groupUsersKick(l *lua.LState) int {
 		return 0
 	}
 
-	if err := KickGroupUsers(l.Context(), n.logger, n.db, n.router, uuid.Nil, groupID, userIDs); err != nil {
+	callerID := uuid.Nil
+	callerIDStr := l.OptString(3, "")
+	if callerIDStr != "" {
+		callerID, err = uuid.FromString(callerIDStr)
+		if err != nil {
+			l.ArgError(1, "expects caller ID to be a valid identifier")
+			return 0
+		}
+	}
+
+	if err := KickGroupUsers(l.Context(), n.logger, n.db, n.router, callerID, groupID, userIDs); err != nil {
 		l.RaiseError("error while trying to kick users from a group: %v", err.Error())
 	}
 	return 0

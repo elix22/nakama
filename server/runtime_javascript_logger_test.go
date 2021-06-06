@@ -15,12 +15,13 @@
 package server
 
 import (
+	"testing"
+
 	"github.com/dop251/goja"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
-	"testing"
 )
 
 func TestJsLoggerInfo(t *testing.T) {
@@ -28,9 +29,7 @@ func TestJsLoggerInfo(t *testing.T) {
 	observer, logs := observer.New(zap.InfoLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}
@@ -56,9 +55,7 @@ func TestJsLoggerWarn(t *testing.T) {
 	observer, logs := observer.New(zap.WarnLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}
@@ -84,9 +81,7 @@ func TestJsLoggerError(t *testing.T) {
 	observer, logs := observer.New(zap.ErrorLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}
@@ -112,9 +107,7 @@ func TestJsLoggerDebug(t *testing.T) {
 	observer, logs := observer.New(zap.DebugLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}
@@ -140,9 +133,7 @@ func TestJsLoggerWithField(t *testing.T) {
 	observer, logs := observer.New(zap.InfoLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}
@@ -169,9 +160,7 @@ func TestJsLoggerWithFields(t *testing.T) {
 	observer, logs := observer.New(zap.InfoLevel)
 
 	obs := zap.New(observer)
-	jsLogger := NewJsLogger(obs)
-	jsLoggerVal := r.ToValue(jsLogger.Constructor(r))
-	jsLoggerInst, err := r.New(jsLoggerVal)
+	jsLoggerInst, err := NewJsLogger(r, obs)
 	if err != nil {
 		t.Error("Failed to instantiate jsLogger")
 	}

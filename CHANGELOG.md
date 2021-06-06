@@ -5,10 +5,30 @@ The format is based on [keep a changelog](http://keepachangelog.com) and this pr
 
 ## [Unreleased]
 ### Changed
-- Change runtime group add/kick/promote/demote APIs to include optional callerID parameter for permission checking. If callerID is an empty string it defaults to the admin user.
+- Include ticket in party matchmaker add operation responses.
+
+### Fixed
+- Ensure all members are correctly listed in party info when there are multiple concurrent successful joins.
+
+## [3.3.0] - 2021-05-17
+### Added
+- Tournaments and leaderboards now allow operator scoring to be passed in on updates.
+- Tournaments and leaderboards now support decrement score operator.
+- Add "rpc_id" and "api_id" to the structured logger output in API calls.
+
+### Changed
+- Store email, avatar URL, and display name provided by Apple, Facebook, and Google login providers if empty.
+- Change runtime group add/kick/promote/demote APIs to include optional callerID parameter for permission checking. If the caller ID is an empty string it defaults to the system user.
+- Default to use SSL mode "prefer" in database connections.
+
 ### Fixed
 - Fix reading Lua authoritative match states that contain functions.
-- Correct path representation for embedded migrations and console files on Windows systems.
+- Fix reading JS/TS authoritative match states that contain functions.
+- Use UNIX path representation for embedded migrations and console files on Windows systems.
+- Update Lua VM implementation to resolve nil reference caused after a VM registry resize.
+- Pointerize slice and map types when passed into the JS VM so that they're mutated by reference.
+- Fix off by one error in leaderboard records returned by "around owner" queries.
+- Return null from within JS VM GetMatch function if match does not exist.
 
 ## [3.2.1] - 2021-04-19
 ### Changed
@@ -54,7 +74,7 @@ The format is based on [keep a changelog](http://keepachangelog.com) and this pr
 - Fix an issue in the JS runtime that would prevent the matchmaker matched callback to function correctly.
 - Allow the console API to return large responses based on the configured max message size.
 - Allow JS runtime initializer functions to be invoked inside a try/catch block.
-- Fix Tournament Reset function hook schedules calcuated on first write if the end active time must be computed with no reset schedule.
+- Fix Tournament Reset function hook schedules calculated on first write if the end active time must be computed with no reset schedule.
 
 ## [3.1.1] - 2021-02-15
 ### Changed
